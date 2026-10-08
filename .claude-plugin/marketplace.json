@@ -8,7 +8,7 @@
     {
       "name": "usage-band",
       "source": "./usage-band",
-      "description": "A band above the prompt showing context fill, tokens, cost and rate limits in Claude Code's own colours"
+      "description": "A band above the prompt showing context fill, tokens, cost and rate limits: stat tiles in the desktop app, a coloured row in the terminal"
     },
     {
       "name": "plan-progress",

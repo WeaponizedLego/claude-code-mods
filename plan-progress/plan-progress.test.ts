@@ -1,6 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { C as LOOK } from './hooks/look'
+
 const pane = (bodyRows = 30) => ({
   component: 'Pane' as const,
   requestId: 'plan-progress',
@@ -49,15 +51,26 @@ test('an approved plan becomes a tree of phases and steps, the first step curren
   expect(ran.context?.[0]).toContain('1.1 [>] Add the sessions table')
   expect(ran.context?.[0]).toContain('3 phases, 6 steps')
 
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'plan-progress', surface, ...pane() })
-    expect(await ui.find({ type: 'Text', text: 'Move auth to sessions' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '2 Switch over' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'Context' })).toBeUndefined()
-    expect((await ui.find({ type: 'Text', text: 'Add the sessions table' }))?.props.color).toBe('claude')
-    expect((await ui.find({ type: 'Text', text: 'Run the auth test suite' }))?.props.color).toBe('inactive')
-    await ui.unmount()
-  }
+  const term = await $.ui.mount({ plugin: 'plan-progress', surface: 'terminal', ...pane() })
+  expect(await term.find({ type: 'Text', text: 'Move auth to sessions' })).toBeDefined()
+  expect(await term.find({ type: 'Text', text: 'Switch over' })).toBeDefined()
+  expect(await term.find({ type: 'Text', text: 'Context' })).toBeUndefined()
+  // The current step is bright and bold inside the current phase's frame.
+  expect((await term.find({ type: 'Text', text: 'Add the sessions table' }))?.props.bold).toBe(true)
+  expect((await term.find({ type: 'Text', text: 'Run the auth test suite' }))?.props.color).toBe(LOOK.muted)
+  expect((await term.find({ type: 'Box', key: 'now-0' }))?.props.borderStyle).toBe('round')
+  await term.unmount()
+
+  // The desktop draws the pane as one image of cards.
+  const desk = await $.ui.mount({ plugin: 'plan-progress', surface: 'desktop', ...pane() })
+  const svg = String((await desk.find({ type: 'Svg' }))?.props.source)
+  expect(svg).toContain('Move auth to sessions')
+  expect(svg).toContain('Switch over')
+  expect(svg).toContain('Phase 1/3')
+  expect(svg).toContain('Add the sessions table')
+  expect(svg).not.toContain('Tokens leak')
+  expect((await desk.find({ type: 'Svg' }))?.props.alt).toContain('0% done, 0 of 6 steps')
+  await desk.unmount()
 })
 
 test('marking steps moves the tree on and estimates what is left', async ($, on) => {
@@ -77,9 +90,17 @@ test('marking steps moves the tree on and estimates what is left', async ($, on)
 
   const ui = await $.ui.mount({ plugin: 'plan-progress', surface: 'terminal', ...pane() })
   expect(await ui.find({ type: 'Text', text: ' 33%' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /20m in · ~40m left/ })).toBeDefined()
-  expect((await ui.find({ type: 'Text', text: 'Replace token checks in the middleware' }))?.props.color).toBe('claude')
+  expect(await ui.find({ type: 'Text', text: ' 20m in' })).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: ' · ~40m left' }))?.props.color).toBe(LOOK.accent)
+  expect((await ui.find({ type: 'Text', text: 'Replace token checks in the middleware' }))?.props.color).toBe(LOOK.text)
   await ui.unmount()
+
+  const desk = await $.ui.mount({ plugin: 'plan-progress', surface: 'desktop', ...pane() })
+  const svg = String((await desk.find({ type: 'Svg' }))?.props.source)
+  expect(svg).toContain('>33%<')
+  expect(svg).toContain('~40m left')
+  expect(svg).toContain('2 steps done')
+  await desk.unmount()
 
   const wrong = await $.tool.call({ tool: 'mcp__plan-progress__plan_mark', phase: 9, status: 'done' } as never)
   expect(wrong.deny).toContain('There is no phase 9')
@@ -100,9 +121,8 @@ test('todos named like a step tick it off', async ($, on) => {
     ],
   } as never)
 
-  const ui = await $.ui.mount({ plugin: 'plan-progress', surface: 'desktop', ...pane() })
-  expect((await ui.find({ type: 'Text', text: 'Write the session store' }))?.props.color).toBe('text')
-  expect((await ui.find({ type: 'Text', text: 'Update the login endpoint' }))?.props.color).toBe('claude')
+  const ui = await $.ui.mount({ plugin: 'plan-progress', surface: 'terminal', ...pane() })
+  expect((await ui.find({ type: 'Text', text: 'Update the login endpoint' }))?.props.bold).toBe(true)
   expect(await ui.find({ type: 'Text', text: /2\/6 steps/ })).toBeDefined()
   await ui.unmount()
 })
@@ -122,8 +142,11 @@ test('a rejected plan draws no tree, and plan_set draws one', async ($, on) => {
   expect(ran.context).toBeUndefined()
 
   const ui = await $.ui.mount({ plugin: 'plan-progress', surface: 'terminal', ...pane() })
-  expect(await ui.find({ type: 'Text', text: 'No plan yet.' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'No plan yet' })).toBeDefined()
   await ui.unmount()
+  const desk = await $.ui.mount({ plugin: 'plan-progress', surface: 'desktop', ...pane() })
+  expect(String((await desk.find({ type: 'Svg' }))?.props.source)).toContain('No plan yet')
+  await desk.unmount()
 
   const set = await $.tool.call({
     tool: 'mcp__plan-progress__plan_set',
@@ -134,6 +157,17 @@ test('a rejected plan draws no tree, and plan_set draws one', async ($, on) => {
     ],
   } as never)
   expect(String(set.result)).toContain('2.1 [ ] Switch CI')
+})
+
+test('titles with markup characters are escaped in the image', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  surface(on)
+  await $.tool.call({ tool: 'mcp__plan-progress__plan_set', title: 'A <b> & "c"', phases: [{ title: 'x < y', steps: ['one', 'two'] }] } as never)
+  const desk = await $.ui.mount({ plugin: 'plan-progress', surface: 'desktop', ...pane() })
+  const svg = String((await desk.find({ type: 'Svg' }))?.props.source)
+  expect(svg).toContain('A &lt;b&gt; &amp; &quot;c&quot;')
+  expect(svg).toContain('x &lt; y')
+  await desk.unmount()
 })
 
 test('a short pane folds the finished phases to one line', async ($, on) => {

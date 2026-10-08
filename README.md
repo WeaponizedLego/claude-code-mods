@@ -4,8 +4,12 @@ My [Claude Code mods](https://code.claude.com/docs/en/plugins/mods/overview.md),
 
 | Mod | What it does |
 | --- | --- |
-| [usage-band](usage-band) | A band above the prompt showing context fill, tokens, cost and rate limits in Claude Code's own colours |
+| [usage-band](usage-band) | A band above the prompt showing context fill, tokens, cost and rate limits: stat tiles in the desktop app, a coloured row in the terminal |
 | [plan-progress](plan-progress) | Reads a phased plan into a live progress tree: phases, steps, elapsed time and an estimate of what is left |
+
+Both mods share one look: dark violet cards with a lilac accent. In the desktop app's Code tab they draw as images (cards, tiles, gradients); in the terminal they use the same colours as text.
+
+![usage-band in the desktop app](docs/usage-band.png)
 
 ## Install
 
@@ -28,7 +32,9 @@ Update later with `claude plugin marketplace update claude-code-mods`, then `cla
 
 ## plan-progress
 
-When a plan with several phases is approved in plan mode, the mod reads its phases and steps (`## Phase 1: ...` headings, other work headings, or a nested list) into a tree and opens it in a pane:
+![plan-progress in the desktop app](docs/plan-progress.png)
+
+When a plan with several phases is approved in plan mode, the mod reads its phases and steps (`## Phase 1: ...` headings, other work headings, or a nested list) into a tree and opens it in a pane. In the terminal it looks like this:
 
 ```
 Move auth to sessions                         20m in · ~40m left

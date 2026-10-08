@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Color, EngineInterface, Register } from 'claude-code'
 
 import type { Plan, StepStatus } from '../types'
+import { C, emptySvg, planSvg } from './look'
 import {
   TASK_STATUS,
   bar,
@@ -22,6 +23,9 @@ const TITLE = 'Plan progress'
 const SET = 'mcp__plan-progress__plan_set'
 const MARK = 'mcp__plan-progress__plan_mark'
 const TICK_MS = 30_000
+// Roughly one cell of the desktop's code font, in CSS pixels: the pane's
+// width in pixels, for an image that fills it.
+const CELL_PX = 8
 
 const planAtom = atom({ plugin: 'plan-progress', key: 'plan' } as const, null)
 const nowAtom = atom({ plugin: 'plan-progress', key: 'now' } as const, 0)
@@ -264,17 +268,35 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
     const plan = await read($, planAtom)
     await read($, nowAtom)
     const now = await $.clock.now()
 
+    // Where the surface draws images, the pane is a stack of cards.
+    if (e.surface !== 'terminal') {
+      const { Box, Svg } = $.ui.resolve(e)
+      const width = e.props.bodyColumns * CELL_PX
+      if (!plan) {
+        const empty = emptySvg(width)
+        return <Svg source={empty.source} alt="No plan yet" width={Math.max(300, width)} height={empty.height} />
+      }
+      const drawn = planSvg(plan, now, width)
+      return (
+        <Box flexDirection="column" key="plan-progress">
+          <Svg source={drawn.source} alt={drawn.alt} width={Math.max(300, width)} height={drawn.height} />
+        </Box>
+      )
+    }
+
+    const { Box, Text } = $.ui.resolve(e)
     if (!plan) {
       return (
-        <Box flexDirection="column">
-          <Text dimColor>No plan yet.</Text>
-          <Text dimColor wrap="wrap">
-            Approve a plan in plan mode, or ask Claude to lay a long task out in phases, and its progress shows here.
+        <Box flexDirection="column" borderStyle="round" borderColor={C.stroke} paddingX={1}>
+          <Text bold color={C.text}>
+            No plan yet
+          </Text>
+          <Text color={C.muted} wrap="wrap">
+            Approve a plan in plan mode, or ask Claude to lay a long task out in phases.
           </Text>
         </Box>
       )
@@ -282,44 +304,70 @@ export const register: Register = on => {
 
     const s = stats(plan, now)
     const room = Math.max(4, e.props.scroll.bodyRows)
-    // Fold finished phases, then the ones after the next, until the tree fits.
-    const isOpen = plan.phases.map(() => true)
-    const rows = () => 3 + plan.phases.reduce((n, p, i) => n + 1 + (isOpen[i] ? p.steps.length : 0), 0)
-    plan.phases.forEach((p, i) => {
-      if (rows() > room && phaseState(p) === 'done') isOpen[i] = false
-    })
-    const firstPending = plan.phases.findIndex(p => phaseState(p) === 'pending')
-    plan.phases.forEach((p, i) => {
-      if (rows() > room && phaseState(p) === 'pending' && i !== firstPending) isOpen[i] = false
-    })
-
-    const cells = Math.max(6, Math.min(20, e.props.bodyColumns - 40))
-    const { filled, track } = bar(s.percent, cells)
-    const glyph: Record<string, [string, Color]> = {
-      done: ['✓', 'success'],
-      active: ['●', 'claude'],
-      pending: ['○', 'inactive'],
-      skipped: ['–', 'subtle'],
+    const current = s.currentPhase ?? -1
+    // The current phase opens in a frame (two rows more); the phases to come,
+    // then the finished ones, open while the tree still fits.
+    const isOpen = plan.phases.map((_, i) => i === current)
+    const rows = () => 3 + plan.phases.reduce((n, p, i) => n + 1 + (isOpen[i] ? p.steps.length + (i === current ? 2 : 0) : 0), 0)
+    for (const wantDone of [false, true]) {
+      plan.phases.forEach((p, i) => {
+        if (!isOpen[i] && (phaseState(p) === 'done') === wantDone && rows() + p.steps.length <= room) isOpen[i] = true
+      })
     }
 
-    const timing = [`${duration(s.elapsedMs)} ${s.isFinished ? 'total' : 'in'}`]
-    if (!s.isFinished && s.remainingMs != null) timing.push(`~${duration(s.remainingMs)} left`)
+    const cells = Math.max(6, Math.min(24, e.props.bodyColumns - 36))
+    const { filled, track } = bar(s.percent, cells)
+    const glyph: Record<string, [string, Color]> = {
+      done: ['✓', C.accent],
+      active: ['●', C.glow],
+      pending: ['○', C.dim],
+      skipped: ['–', C.dim],
+    }
+    const phaseNo = Math.min(plan.phases.length, current + 1 || plan.phases.length)
+
+    const stepRow = (pi: number, si: number, inFrame: boolean) => {
+      const p = plan.phases[pi]!
+      const step = p.steps[si]!
+      const [sg, sc] = glyph[step.status]!
+      const took = step.startedAt != null ? (step.endedAt ?? now) - step.startedAt : null
+      const branch = inFrame ? '' : si === p.steps.length - 1 ? '  └ ' : '  ├ '
+      return (
+        <Box flexDirection="row" justifyContent="space-between" key={`step-${pi}-${si}`}>
+          <Box flexDirection="row" flexShrink={1}>
+            <Text color={C.dim}>{branch}</Text>
+            <Text color={sc}>{`${sg} `}</Text>
+            <Text
+              color={step.status === 'active' ? C.text : step.status === 'done' ? C.soft : C.muted}
+              bold={step.status === 'active'}
+              strikethrough={step.status === 'skipped'}
+              wrap="truncate"
+            >
+              {step.title}
+            </Text>
+          </Box>
+          <Text color={step.status === 'active' ? C.accent : C.muted}>{took != null && step.status !== 'skipped' ? ` ${duration(took)}` : ''}</Text>
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column" key="plan-progress">
         <Box flexDirection="row" justifyContent="space-between">
-          <Text bold wrap="truncate">
+          <Text bold color={C.text} wrap="truncate">
             {plan.title}
           </Text>
-          <Text color="inactive"> {timing.join(' · ')}</Text>
+          <Box flexDirection="row">
+            <Text color={C.muted}>{` ${duration(s.elapsedMs)} ${s.isFinished ? 'total' : 'in'}`}</Text>
+            {!s.isFinished && s.remainingMs != null && <Text color={C.accent}>{` · ~${duration(s.remainingMs)} left`}</Text>}
+          </Box>
         </Box>
         <Box flexDirection="row">
-          <Text color={s.isFinished ? 'success' : 'claude'}>{filled}</Text>
-          <Text color="subtle">{track}</Text>
-          <Text bold color={s.isFinished ? 'success' : 'text'}>
+          <Text color={C.accent}>{filled}</Text>
+          <Text color={C.track}>{track}</Text>
+          <Text bold color={C.text}>
             {` ${s.percent}%`}
           </Text>
-          <Text color="inactive">{`  ${s.closed}/${s.total} steps · phase ${Math.min(plan.phases.length, (s.currentPhase ?? plan.phases.length - 1) + 1)}/${plan.phases.length}`}</Text>
+          <Text color={C.muted}>{`  ${s.closed}/${s.total} steps · phase ${phaseNo}/${plan.phases.length}`}</Text>
         </Box>
         <Text> </Text>
         {plan.phases.flatMap((p, pi) => {
@@ -332,38 +380,24 @@ export const register: Register = on => {
             <Box flexDirection="row" justifyContent="space-between" key={`phase-${pi}`}>
               <Box flexDirection="row" flexShrink={1}>
                 <Text color={color}>{`${g} `}</Text>
-                <Text bold={state === 'active'} color={state === 'pending' ? 'inactive' : 'text'} wrap="truncate">
-                  {`${pi + 1} ${p.title}`}
+                <Text color={C.muted}>{`${pi + 1} `}</Text>
+                <Text bold={pi === current} color={state === 'pending' && pi !== current ? C.soft : C.text} wrap="truncate">
+                  {p.title}
                 </Text>
               </Box>
-              <Text color="subtle">{right ? ` ${right}` : ''}</Text>
+              <Text color={C.muted}>{right ? ` ${right}` : ''}</Text>
             </Box>
           )
           if (!isOpen[pi]) return [head]
-          return [
-            head,
-            ...p.steps.map((step, si) => {
-              const [sg, sc] = glyph[step.status]!
-              const isLast = si === p.steps.length - 1
-              const took = step.startedAt != null ? (step.endedAt ?? now) - step.startedAt : null
-              return (
-                <Box flexDirection="row" justifyContent="space-between" key={`step-${pi}-${si}`}>
-                  <Box flexDirection="row" flexShrink={1}>
-                    <Text color="subtle">{isLast ? '  └ ' : '  ├ '}</Text>
-                    <Text color={sc}>{`${sg} `}</Text>
-                    <Text
-                      color={step.status === 'active' ? 'claude' : step.status === 'pending' ? 'inactive' : step.status === 'skipped' ? 'subtle' : 'text'}
-                      strikethrough={step.status === 'skipped'}
-                      wrap="truncate"
-                    >
-                      {step.title}
-                    </Text>
-                  </Box>
-                  <Text color="subtle">{took != null && step.status !== 'skipped' ? ` ${duration(took)}` : ''}</Text>
-                </Box>
-              )
-            }),
-          ]
+          if (pi === current) {
+            return [
+              <Box flexDirection="column" borderStyle="round" borderColor={C.deep} paddingX={1} key={`now-${pi}`}>
+                {head}
+                {p.steps.map((_, si) => stepRow(pi, si, true))}
+              </Box>,
+            ]
+          }
+          return [head, ...p.steps.map((_, si) => stepRow(pi, si, false))]
         })}
       </Box>
     )

@@ -1,7 +1,7 @@
 {
   "name": "usage-band",
-  "version": "0.1.0",
-  "description": "A band above the prompt showing context fill, tokens, cost and rate limits in Claude Code's own colours",
+  "version": "0.2.0",
+  "description": "A band above the prompt showing context fill, tokens, cost and rate limits: stat tiles in the desktop app, a coloured row in the terminal",
   "author": {
     "name": "WeaponizedLego"
   },

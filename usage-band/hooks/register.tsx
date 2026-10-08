@@ -2,15 +2,18 @@ import { atom, read, update } from 'claude-code'
 import type { Color, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
 import type { Snapshot, Tokens } from '../types'
+import { C, LIMIT_NAMES, TILE_H, bandSvg, compact, dollars, level } from './look'
 
 const snapshot = atom({ plugin: 'usage-band', key: 'snapshot' } as const, null)
 const tokens = atom({ plugin: 'usage-band', key: 'tokens' } as const, { input: 0, output: 0, cacheRead: 0 })
 
 const ZERO: Tokens = { input: 0, output: 0, cacheRead: 0 }
 const BAR_CELLS = 10
-// Full-height blocks: the filled part in the level colour, the track in subtle.
-const BAR_GLYPH = '█'
-const LIMIT_NAMES: Record<string, string> = { five_hour: '5h', seven_day: '7d', spend_limit: 'spend' }
+// Rounded cells, as the desktop's pills: the filled part in the level colour.
+const FILLED = '▰'
+const TRACK = '▱'
+// Roughly one cell of the desktop's code font, in CSS pixels.
+const CELL_PX = 8
 
 type Figures = { context: SessionContextUsage; rateLimits: SessionRateLimit[]; cost?: SessionCost }
 
@@ -22,24 +25,9 @@ const toSnapshot = ({ context, rateLimits, cost }: Figures): Snapshot => ({
   limits: rateLimits.map(({ kind, percentUsed }) => ({ kind, percentUsed })),
 })
 
-// Green while there is room, orange from 70%, red past 80%. Green and red are
-// the theme keys Claude Code paints its own success and error rows with; the
-// theme's `warning` is amber, so orange is xterm's 208, which any terminal
-// that has 256 colours draws exactly.
-const ORANGE = '#ff8700'
-const level = (percent: number): Color => (percent > 80 ? 'error' : percent >= 70 ? ORANGE : 'success')
-
-const compact = (n: number): string => {
-  if (n < 1000) return `${n}`
-  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`
-  return `${(n / 1_000_000).toFixed(1)}M`
-}
-
-const dollars = (usd: number): string => `$${usd < 10 ? usd.toFixed(2) : usd.toFixed(1)}`
-
 // One run of text in one colour: the band is laid out from these so its width
 // can be counted before it is drawn.
-type Run = { text: string; color?: Color; bold?: boolean; bar?: 'filled' | 'track' }
+type Run = { text: string; color?: Color; bold?: boolean }
 type Segment = { runs: Run[]; priority: number }
 
 const width = (runs: Run[]) => runs.reduce((sum, r) => sum + r.text.length, 0)
@@ -49,39 +37,39 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
 
   const percent = snap?.percent
   if (percent == null) {
-    out.push({ priority: 0, runs: [{ text: 'context ', color: 'inactive' }, { text: 'waiting for first reply', color: 'subtle' }] })
+    out.push({ priority: 0, runs: [{ text: 'context ', color: C.muted }, { text: 'waiting for first reply', color: C.dim }] })
   } else {
     const filled = Math.min(BAR_CELLS, Math.round(percent / (100 / BAR_CELLS)))
     out.push({
       priority: 0,
       runs: [
-        { text: 'context ', color: 'inactive' },
-        { text: BAR_GLYPH.repeat(filled), color: level(percent), bar: 'filled' },
-        { text: BAR_GLYPH.repeat(BAR_CELLS - filled), color: 'subtle', bar: 'track' },
+        { text: 'context ', color: C.muted },
+        { text: FILLED.repeat(filled), color: level(percent) },
+        { text: TRACK.repeat(BAR_CELLS - filled), color: C.track },
         { text: ` ${percent}%`, color: level(percent), bold: true },
       ],
     })
     if (snap?.contextTokens != null) {
-      out.push({ priority: 3, runs: [{ text: ` ${compact(snap.contextTokens)}/${compact(snap.window)}`, color: 'inactive' }] })
+      out.push({ priority: 3, runs: [{ text: ` ${compact(snap.contextTokens)}/${compact(snap.window)}`, color: C.muted }] })
     }
   }
 
   if (snap?.costUsd != null) {
-    out.push({ priority: 1, runs: [{ text: dollars(snap.costUsd), color: 'claude', bold: true }] })
+    out.push({ priority: 1, runs: [{ text: dollars(snap.costUsd), color: C.text, bold: true }] })
   }
 
   if (used.input + used.output > 0) {
     out.push({
       priority: 2,
       runs: [
-        { text: '↑', color: 'suggestion' },
-        { text: `${compact(used.input)} `, color: 'text' },
-        { text: '↓', color: 'claude' },
-        { text: compact(used.output), color: 'text' },
+        { text: '↑', color: C.glow },
+        { text: `${compact(used.input)} `, color: C.soft },
+        { text: '↓', color: C.accent },
+        { text: compact(used.output), color: C.text, bold: true },
       ],
     })
     if (used.cacheRead > 0) {
-      out.push({ priority: 5, runs: [{ text: `cached ${compact(used.cacheRead)}`, color: 'subtle' }] })
+      out.push({ priority: 5, runs: [{ text: `cached ${compact(used.cacheRead)}`, color: C.dim }] })
     }
   }
 
@@ -89,8 +77,8 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
     out.push({
       priority: 4,
       runs: [
-        { text: `${LIMIT_NAMES[limit.kind] ?? limit.kind} `, color: 'inactive' },
-        { text: `${Math.round(limit.percentUsed)}%`, color: level(limit.percentUsed) },
+        { text: `${LIMIT_NAMES[limit.kind] ?? limit.kind} `, color: C.muted },
+        { text: `${Math.round(limit.percentUsed)}%`, color: level(limit.percentUsed), bold: true },
       ],
     })
   }
@@ -98,26 +86,8 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
   return out
 }
 
-// On the desktop the bar is a row of rounded pills drawn as an SVG. An SVG is
-// drawn as an image, so it takes real colours, not theme keys: these are the
-// ones the desktop's dark theme paints the same keys with.
-const PILL_COLOURS: Record<string, string> = { success: '#0ca30c', error: '#e5484d', subtle: '#898781' }
-const PILL_W = 12
-const PILL_H = 8
-const PILL_GAP = 3
-const PILL_ROW_WIDTH = BAR_CELLS * (PILL_W + PILL_GAP) - PILL_GAP
-const PILL_EXTRA_CELLS = 8
-
-function pills(filled: number, track: number, color: Color | undefined): string {
-  const fill = PILL_COLOURS[color ?? ''] ?? color ?? PILL_COLOURS.success
-  const rects = Array.from({ length: filled + track }, (_, i) =>
-    `<rect x="${i * (PILL_W + PILL_GAP)}" y="0" width="${PILL_W}" height="${PILL_H}" rx="${PILL_H / 2}" fill="${i < filled ? fill : PILL_COLOURS.subtle}"/>`,
-  ).join('')
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${PILL_ROW_WIDTH}" height="${PILL_H}" viewBox="0 0 ${PILL_ROW_WIDTH} ${PILL_H}">${rects}</svg>`
-}
-
-const SEPARATOR: Run = { text: ' · ', color: 'subtle' }
-const MARK: Run = { text: '✻ ', color: 'claude' }
+const SEPARATOR: Run = { text: ' · ', color: C.dim }
+const MARK: Run = { text: '✻ ', color: C.accent }
 
 // Drops the least important segments until the row fits, keeping the order.
 function fit(all: Segment[], columns: number): Run[] {
@@ -178,28 +148,29 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
-    const Svg = e.surface === 'desktop' ? $.ui.resolve(e).Svg : null
-    // The pills are wider than the ten cells the text bar takes.
-    const columns = e.props.bodyColumns - (Svg ? PILL_EXTRA_CELLS : 0)
-    const runs = fit(segments(await read($, snapshot), await read($, tokens)), columns)
+    const snap = await read($, snapshot)
+    const used = await read($, tokens)
+
+    // Where the surface draws images and the band has the rows, a strip of stat tiles.
+    if (e.surface !== 'terminal' && e.props.maxRows >= 3) {
+      const { Box, Svg } = $.ui.resolve(e)
+      const strip = bandSvg(snap, used, e.props.bodyColumns * CELL_PX)
+      return (
+        <Box flexDirection="row" key="usage-band">
+          <Svg source={strip.source} alt={strip.alt} width={strip.width} height={TILE_H} />
+        </Box>
+      )
+    }
+
+    const runs = fit(segments(snap, used), e.props.bodyColumns)
     const { Box, Text } = $.ui.resolve(e)
-
-    const children = runs.flatMap((r, i) => {
-      if (Svg && r.bar === 'track') return []
-      if (Svg && r.bar === 'filled') {
-        const track = runs[i + 1]?.bar === 'track' ? (runs[i + 1]?.text.length ?? 0) : 0
-        return [<Svg source={pills(r.text.length, track, r.color)} alt={`${r.text.length} of ${r.text.length + track} context pills filled`} width={PILL_ROW_WIDTH} height={PILL_H} />]
-      }
-      return [
-        <Text color={r.color} bold={r.bold}>
-          {r.text}
-        </Text>,
-      ]
-    })
-
     return (
       <Box flexDirection="row" alignItems="center" key="usage-band">
-        {children}
+        {runs.map(r => (
+          <Text color={r.color} bold={r.bold}>
+            {r.text}
+          </Text>
+        ))}
       </Box>
     )
   })
