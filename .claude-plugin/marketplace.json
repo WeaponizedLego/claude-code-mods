@@ -9,6 +9,11 @@
       "name": "usage-band",
       "source": "./usage-band",
       "description": "A band above the prompt showing context fill, tokens, cost and rate limits in Claude Code's own colours"
+    },
+    {
+      "name": "plan-progress",
+      "source": "./plan-progress",
+      "description": "Reads a phased plan into a live progress tree: phases, steps, elapsed time and an estimate of what is left"
     }
   ]
 }
