@@ -1,0 +1,14 @@
+{
+  "name": "claude-code-mods",
+  "description": "Claude Code mods by WeaponizedLego",
+  "owner": {
+    "name": "WeaponizedLego"
+  },
+  "plugins": [
+    {
+      "name": "usage-band",
+      "source": "./usage-band",
+      "description": "A band above the prompt showing context fill, tokens, cost and rate limits in Claude Code's own colours"
+    }
+  ]
+}
