@@ -6,8 +6,9 @@ My [Claude Code mods](https://code.claude.com/docs/en/plugins/mods/overview.md),
 | --- | --- |
 | [usage-band](usage-band) | A band above the prompt showing context fill, tokens, cost and rate limits: stat tiles in the desktop app, a coloured row in the terminal |
 | [plan-progress](plan-progress) | Reads a phased plan into a live progress tree: phases, steps, elapsed time and an estimate of what is left |
+| [test-user](test-user) | A Haiku test user that clicks through your locally running app and reports UI/UX issues: its task list, findings and failures in a live pane |
 
-Both mods share one look: dark violet cards with a lilac accent. In the desktop app's Code tab they draw as images (cards, tiles, gradients); in the terminal they use the same colours as text.
+All three mods share one look: dark violet cards with a lilac accent. In the desktop app's Code tab they draw as images (cards, tiles, gradients); in the terminal they use the same colours as text.
 
 ![usage-band in the desktop app](docs/usage-band.png)
 
@@ -54,6 +55,20 @@ Move auth to sessions                         20m in · ~40m left
 The status line carries the short form (`▰▰▱▱ 2/6 · phase 2/3: Switch over · 20m in · ~40m left`). Steps move when Claude calls the mod's `plan_mark` tool, or by themselves when Claude's tasks or todos are named like a step. Without plan mode, ask Claude to lay the work out in phases and it calls `plan_set`. The estimate is the pace so far times the steps left.
 
 `/plan-progress` opens the tree (it also works mid-turn); `/plan-progress clear` stops tracking.
+
+## test-user
+
+![test-user in the desktop app](docs/test-user.png)
+
+A test user for the app you are running locally. Ask Claude to "test the app" (or a feature, a page, a flow) and it hands the job to `test-user:tester`, a subagent on Haiku that drives the app in the browser the way a person would: it works out what to test, finds the app (the URL you gave, `.claude/launch.json`, `package.json`), plans a handful of user tasks, works through them and reports each problem it sees. It never edits code, stays on localhost and only uses test data.
+
+When you just say "test the app", Claude points it at the feature most recently built in the session; with nothing built, the tester looks at `git diff` and `git log` for a recent feature, and failing that tests the whole application.
+
+The pane shows the run as it goes: status, tasks passed out of total, a count per severity (blocker, major, minor, polish), the task list with a note on each failure, a card per finding (worst first, with where and how to reproduce), a red card when it could not test at all, and earlier runs folded at the bottom. The status line carries the short form (`test-user ● 3/6 tasks · 2 findings · 4m · Pay with the test card`) and a toast says how it ended.
+
+Claude gets the same reporting tools (`test_plan`, `test_task`, `test_finding`, `test_finish`), so a test it runs by hand shows in the pane too, and `test_report` to read a run back. If the tester stops without a verdict, the record decides it; a "passed" never hides a failed task.
+
+`/test-user` opens the pane; `/test-user run [what to test]` starts a run; `/test-user clear` forgets the runs.
 
 ## Adding a mod
 
