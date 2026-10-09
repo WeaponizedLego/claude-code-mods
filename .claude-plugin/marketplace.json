@@ -14,6 +14,11 @@
       "name": "plan-progress",
       "source": "./plan-progress",
       "description": "Reads a phased plan into a live progress tree: phases, steps, elapsed time and an estimate of what is left"
+    },
+    {
+      "name": "test-user",
+      "source": "./test-user",
+      "description": "A Haiku test user that clicks through your locally running app and reports UI/UX issues, with a live pane of its tasks, findings and failures"
     }
   ]
 }
