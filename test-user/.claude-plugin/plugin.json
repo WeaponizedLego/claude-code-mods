@@ -1,6 +1,6 @@
 {
   "name": "test-user",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A Haiku test user that clicks through your locally running app and reports UI/UX issues, with a live pane of its tasks, findings and failures",
   "author": {
     "name": "WeaponizedLego"

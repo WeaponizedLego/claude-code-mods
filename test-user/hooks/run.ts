@@ -44,6 +44,8 @@ export function advance(run: Run, now: number): Run {
 export function setTask(run: Run, index: number, status: TaskStatus, note: string | undefined, now: number): Run {
   const tasks = run.tasks.map((t, i): Task => {
     if (i === index) {
+      // Marked by hand, it is no longer a task the run never reached.
+      if (t.isAutoSkipped) t = { title: t.title, status: t.status, note: t.note, startedAt: t.startedAt, endedAt: t.endedAt }
       if (status === 'pending') return { title: t.title, status }
       if (status === 'active') return { ...t, status, note: note ?? t.note, startedAt: t.startedAt ?? now, endedAt: undefined }
       return { ...t, status, note: note ?? t.note, startedAt: t.startedAt ?? now, endedAt: now }
@@ -70,10 +72,19 @@ export function verdictOf(run: Run): RunStatus {
   return 'passed'
 }
 
-export function finish(run: Run, status: RunStatus, now: number, summary?: string, failure?: string): Run {
+export function finish(run: Run, status: RunStatus, now: number, endedBy: 'tester' | 'turn', summary?: string, failure?: string): Run {
   // Tasks left open when the run ends were never tried.
-  const tasks = run.tasks.map((t): Task => (isClosed(t) ? t : { ...t, status: 'skipped', endedAt: t.startedAt != null ? now : undefined }))
-  return { ...run, tasks, status, endedAt: now, summary: summary ?? run.summary, failure: failure ?? run.failure }
+  const tasks = run.tasks.map((t): Task =>
+    isClosed(t) ? t : { ...t, status: 'skipped', isAutoSkipped: true, endedAt: t.startedAt != null ? now : undefined },
+  )
+  return { ...run, tasks, status, endedAt: now, endedBy, isDelivered: false, summary: summary ?? run.summary, failure: failure ?? run.failure }
+}
+
+/** A run that ended takes updates again: its auto-skipped tasks go back in the queue. */
+export function reopen(run: Run): Run {
+  if (run.status === 'running') return run
+  const tasks = run.tasks.map((t): Task => (t.isAutoSkipped ? { title: t.title, status: 'pending', note: t.note } : t))
+  return { ...run, tasks, status: 'running', endedAt: undefined, endedBy: undefined, failure: undefined, isDelivered: undefined }
 }
 
 export type Stats = {
@@ -151,7 +162,9 @@ export function report(run: Run, now: number): string {
   if (run.summary) lines.push(`Summary: ${run.summary}`)
   lines.push('', `Tasks (${s.passed} passed, ${s.failed} failed, ${s.total} total):`)
   if (run.tasks.length === 0) lines.push('  (none planned)')
-  run.tasks.forEach((t, i) => lines.push(`  ${i + 1}. ${GLYPH[t.status]} ${t.title}${t.note ? ` — ${t.note}` : ''}`))
+  run.tasks.forEach((t, i) =>
+    lines.push(`  ${i + 1}. ${GLYPH[t.status]} ${t.title}${t.isAutoSkipped ? ' (not reached)' : ''}${t.note ? ` — ${t.note}` : ''}`),
+  )
   lines.push('', `Findings: ${findingsLine(s)}`)
   for (const f of bySeverity(run.findings)) {
     const task = f.task != null && run.tasks[f.task] ? ` [task ${f.task + 1}]` : ''

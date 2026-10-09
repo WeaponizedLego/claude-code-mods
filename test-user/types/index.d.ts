@@ -1,6 +1,14 @@
 export type TaskStatus = 'pending' | 'active' | 'passed' | 'failed' | 'skipped'
 
-export type Task = { title: string; status: TaskStatus; note?: string; startedAt?: number; endedAt?: number }
+export type Task = {
+  title: string
+  status: TaskStatus
+  note?: string
+  startedAt?: number
+  endedAt?: number
+  // Skipped only because the run ended with it open; a reopened run takes it up again.
+  isAutoSkipped?: true
+}
 
 export type Severity = 'blocker' | 'major' | 'minor' | 'polish'
 
@@ -35,6 +43,12 @@ export type Run = {
   summary?: string
   // Why the run was blocked or failed.
   failure?: string
+  // The Agent call that started it, so its result can carry the report.
+  toolUseId?: string
+  // Who ended it: the tester through test_finish, or its turn ending without one.
+  endedBy?: 'tester' | 'turn'
+  // Whether the main conversation has been handed the finished report.
+  isDelivered?: boolean
 }
 
 declare module 'claude-code' {

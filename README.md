@@ -66,7 +66,9 @@ When you just say "test the app", Claude points it at the feature most recently 
 
 The pane shows the run as it goes: status, tasks passed out of total, a count per severity (blocker, major, minor, polish), the task list with a note on each failure, a card per finding (worst first, with where and how to reproduce), a red card when it could not test at all, and earlier runs folded at the bottom. The status line carries the short form (`test-user ● 3/6 tasks · 2 findings · 4m · Pay with the test card`) and a toast says how it ended.
 
-Claude gets the same reporting tools (`test_plan`, `test_task`, `test_finding`, `test_finish`), so a test it runs by hand shows in the pane too, and `test_report` to read a run back. If the tester stops without a verdict, the record decides it; a "passed" never hides a failed task.
+The session gets the full record, not just the tester's closing message: it rides back on the Agent result when the tester ran in the foreground, and on the next prompt (or the background task's notification) otherwise; `test_report` reads it any time. A tester whose turn ends early and is resumed carries on with the same run.
+
+Claude gets the same reporting tools (`test_plan`, `test_task`, `test_finding`, `test_finish`), so a test it runs by hand shows in the pane too, and it can amend the latest tester run with what it re-checked. If the tester stops without a verdict, the record decides it; a "passed" never hides a failed task.
 
 `/test-user` opens the pane; `/test-user run [what to test]` starts a run; `/test-user clear` forgets the runs.
 

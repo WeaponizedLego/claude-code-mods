@@ -5,7 +5,8 @@ export const AGENT_DESCRIPTION =
   'with its task list and findings shown live in the test-user pane. Use it when the user asks to test, QA, try out or click through the app. ' +
   'In the prompt, say what to test, the local URL if known, and what changed. When the user just says "test the app", ' +
   'make the focus the feature most recently developed in this session (what it does, where it lives, the files touched); ' +
-  'if nothing was built in this session, ask it to test the entire application. It never edits code.'
+  'if nothing was built in this session, ask it to test the entire application. It never edits code. ' +
+  'Its full record (every task, finding and failure, as the developer sees it in the pane) comes back with its result, or with the next prompt when it ran in the background; mcp__test-user__test_report reads it any time.'
 
 export const TESTER_PROMPT = `You are a test user. You try a locally running application the way a real person would, and you report what works, what breaks, and what is confusing. You are testing UI and UX, not reading code for its own sake. You never edit, write or delete project files.
 

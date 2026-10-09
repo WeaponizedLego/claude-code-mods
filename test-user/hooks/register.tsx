@@ -20,6 +20,7 @@ import {
   newRun,
   plan,
   plural,
+  reopen,
   report,
   setTask,
   stats,
@@ -59,29 +60,52 @@ async function save($: EngineInterface, fn: (runs: Run[], now: number) => Run[])
   return runs
 }
 
-/** Applies `fn` to the run in progress for this loop; null when there is none. */
+const same = (a: Run, b: Run) => a.agentId === b.agentId && a.startedAt === b.startedAt
+
+// The run a loop's updates go to: a tester's own latest run, ended or not (a
+// tester whose turn ended early and was resumed carries on with it); for the
+// main conversation, its own run in progress, else the latest run of all, so
+// Claude can amend a tester's run with what it re-checked.
+function targetOf(runs: Run[], loop: string): number {
+  if (loop !== MAIN) return runs.findIndex(r => r.agentId === loop)
+  const own = runs.findIndex(r => r.agentId === MAIN && r.status === 'running')
+  return own >= 0 ? own : runs.length ? 0 : -1
+}
+
+/** Applies `fn` to the run this loop updates; null when there is none. */
 async function changeRun($: EngineInterface, loop: string, fn: (run: Run, now: number) => Run): Promise<Run | null> {
   let changed: Run | null = null
   await save($, (runs, now) => {
     // `update` may run this again on a version miss: start each pass afresh.
     changed = null
-    return runs.map(r => {
-      if (changed || r.agentId !== loop || r.status !== 'running') return r
-      return (changed = advance(fn(r, now), now))
+    const i = targetOf(runs, loop)
+    return runs.map((r, j) => {
+      if (j !== i) return r
+      if (r.agentId === loop) return (changed = advance(fn(reopen(r), now), now))
+      // Claude amending a tester's run: an ended run stays ended, its verdict redone.
+      const amended = fn(r, now)
+      return (changed = r.status === 'running' ? advance(amended, now) : { ...amended, status: verdictOf(amended), isDelivered: false })
     })
   })
   return changed
 }
 
-async function startRun($: EngineInterface, loop: string, tester: string, brief: string): Promise<Run> {
+async function startRun($: EngineInterface, loop: string, tester: string, brief: string, toolUseId?: string): Promise<Run> {
   const runs = await save($, (runs, now) => {
     // A loop has one run going at a time; an older one it left open is closed.
-    const rest = runs.map(r => (r.agentId === loop && r.status === 'running' ? finish(r, verdictOf(r), now) : r))
-    return [newRun(loop, tester, brief, now), ...rest]
+    const rest = runs.map(r => (r.agentId === loop && r.status === 'running' ? finish(r, verdictOf(r), now, 'turn') : r))
+    return [{ ...newRun(loop, tester, brief, now), toolUseId }, ...rest]
   })
   await openPane($, false)
   return runs[0]!
 }
+
+async function markDelivered($: EngineInterface, delivered: Run[]) {
+  await save($, runs => runs.map(r => (delivered.some(d => same(d, r)) ? { ...r, isDelivered: true } : r)))
+}
+
+const deliveredText = (run: Run, now: number) =>
+  `test-user results (the full record from the test-user pane, including updates the tester's own final message may leave out):\n\n${report(run, now)}`
 
 // A pane that cannot open (refused, or no surface to draw on) never costs the run.
 async function openPane($: EngineInterface, isAsked: boolean) {
@@ -173,9 +197,11 @@ export const register: Register = on => {
     })
     await $.tool.register({
       name: 'test_report',
-      description: 'Read the latest test-user run (or one in progress): its tasks, findings and failures, as text.',
+      description:
+        'Read the latest test-user run (or the one in progress) as the developer sees it in the test-user pane: its tasks, findings and why it failed. ' +
+        'Use it to answer questions about a test run or to check what the tester recorded.',
       inputSchema: { type: 'object', properties: {} },
-      isDeferred: true,
+      isDeferred: false,
     })
     await $.command.register({
       name: 'test-user',
@@ -204,11 +230,12 @@ export const register: Register = on => {
   on('agent.spawn', async ($, e, next) => {
     const started = await next(e)
     if (e.subagentType !== AGENT || !('agentId' in started) || !started.agentId) return started
-    await startRun($, started.agentId, 'Haiku test user', e.description || firstLine(e.prompt))
+    await startRun($, started.agentId, 'Haiku test user', e.description || firstLine(e.prompt), e.tool_use_id)
     return started
   })
 
-  // Its turn ending is the run ending, whatever the tester remembered to say.
+  // Its turn ending ends the run, whatever the tester remembered to say; a
+  // tester resumed after that carries on with the same run (targetOf).
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     const loop = e.agentId
@@ -219,9 +246,11 @@ export const register: Register = on => {
     const ended = await save($, (runs, now) =>
       runs.map(r => {
         if (r.agentId !== loop || r.status !== 'running') return r
-        if (e.reason === 'aborted') return finish(r, 'failed', now, undefined, 'The run was interrupted.')
-        if (e.reason !== 'answer') return finish(r, 'failed', now, undefined, `The tester stopped: ${e.reason === 'refusal' ? 'the model refused' : 'an API error'}.`)
-        return finish(r, verdictOf(r), now, r.summary ?? (clean(e.answer, 300) || undefined))
+        if (e.reason === 'aborted') return finish(r, 'failed', now, 'turn', undefined, 'The run was interrupted.')
+        if (e.reason !== 'answer') {
+          return finish(r, 'failed', now, 'turn', undefined, `The tester stopped: ${e.reason === 'refusal' ? 'the model refused' : 'an API error'}.`)
+        }
+        return finish(r, verdictOf(r), now, 'turn', r.summary ?? (clean(e.answer, 300) || undefined))
       }),
     )
     const run = ended.find(r => r.agentId === loop)
@@ -229,21 +258,51 @@ export const register: Register = on => {
     return result
   })
 
+  // The session gets the full record: a foreground tester's on its Agent result...
+  on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
+    const ran = await next(e)
+    if ((e as unknown as { subagent_type?: string }).subagent_type !== AGENT || ran.deny !== undefined) return ran
+    const run = (await read($, runsAtom)).find(r => r.toolUseId === e.tool_use_id)
+    if (!run) return ran
+    const now = await $.clock.now()
+    if (run.status === 'running') {
+      const note = `test-user: this run is still going (${statusLine(run, now)}). Its full record reaches you when it ends; ${REPORT} reads it at any time.`
+      return { ...ran, context: [...(ran.context ?? []), note] }
+    }
+    await markDelivered($, [run])
+    return { ...ran, context: [...(ran.context ?? []), deliveredText(run, now)] }
+  }).catch(($, e, next) => next(e))
+
+  // ...and any run that ended unseen (a background tester, a resumed one) rides
+  // on the next prompt, a background task's notification included.
+  on('prompt.submit', async ($, e, next) => {
+    const fresh = (await read($, runsAtom)).filter(r => r.status !== 'running' && r.isDelivered === false)
+    if (fresh.length === 0) return next(e)
+    const now = await $.clock.now()
+    await markDelivered($, fresh)
+    return next({ ...e, context: [...(e.context ?? []), ...fresh.map(r => deliveredText(r, now))] })
+  }).catch(($, e, next) => next(e))
+
   on('tool.call', { tool: PLAN }, async ($, e) => {
     const input = e as unknown as PlanInput
     const tasks = (input.tasks ?? []).map(t => clean(t)).filter(Boolean)
     if (tasks.length === 0) return { deny: 'test_plan needs at least one task.' }
     const loop = loopOf(e)
     const runs = await read($, runsAtom)
-    if (!runs.some(r => r.agentId === loop && r.status === 'running')) {
-      await startRun($, loop, loop === MAIN ? 'Claude' : 'Haiku test user', input.target ?? 'Test run')
-    }
+    // A tester carries on with its run if its turn ended it; anything else is a new run.
+    const own = runs.find(r => r.agentId === loop)
+    const carriesOn = own && (own.status === 'running' || (loop !== MAIN && own.endedBy === 'turn'))
+    if (!carriesOn) await startRun($, loop, loop === MAIN ? 'Claude' : 'Haiku test user', input.target ?? 'Test run')
     const run = (await changeRun($, loop, (r, now) => ({
       ...plan(r, tasks, now),
       target: input.target ? clean(input.target, 80) : r.target,
       scope: input.scope ?? r.scope,
     })))!
-    return { result: `Task list shown to the developer:\n${run.tasks.map((t, i) => `${i + 1}. ${t.title}`).join('\n')}\n\nTask 1 is active. Mark each with test_task; report problems with test_finding.` }
+    const at = run.tasks.findIndex(t => t.status === 'active')
+    const list = run.tasks.map((t, i) => `${i + 1}. ${t.title}${t.status === 'pending' || t.status === 'active' ? '' : ` (${t.status})`}`)
+    return {
+      result: `Task list shown to the developer:\n${list.join('\n')}\n\n${at >= 0 ? `Task ${at + 1} is active. ` : ''}Mark each with test_task; report problems with test_finding.`,
+    }
   })
 
   on('tool.call', { tool: TASK }, async ($, e) => {
@@ -259,7 +318,7 @@ export const register: Register = on => {
       }
       return setTask(r, i, status, input.note ? clean(input.note, 160) : undefined, now)
     })
-    if (!run) return { deny: 'No test run in progress here. Call test_plan first.' }
+    if (!run) return { deny: 'No test run here yet. Call test_plan first.' }
     if (error) return { deny: error }
     const s = stats(run, await $.clock.now())
     const cur = s.current != null ? ` Now on task ${s.current + 1}: ${run.tasks[s.current]!.title}.` : s.closed === s.total ? ' All tasks done: call test_finish.' : ''
@@ -280,29 +339,25 @@ export const register: Register = on => {
         now,
       )
     })
-    if (!run) return { deny: 'No test run in progress here. Call test_plan first.' }
+    if (!run) return { deny: 'No test run here yet. Call test_plan first.' }
     return { result: `Recorded (${severity}). ${findingsLine(stats(run, 0))} so far.` }
   })
 
   on('tool.call', { tool: FINISH }, async ($, e) => {
     const input = e as unknown as FinishInput
     const loop = loopOf(e)
-    const runs = await read($, runsAtom)
-    let run = runs.find(r => r.agentId === loop && r.status === 'running')
-    // Blocked before it planned anything: still a run the developer should see.
-    if (!run && input.verdict === 'blocked') run = await startRun($, loop, loop === MAIN ? 'Claude' : 'Haiku test user', 'Test run')
-    if (!run) return { deny: 'No test run in progress here. Call test_plan first.' }
-
     const summary = input.summary ? cleanDetail(input.summary) : undefined
-    const ended = await save($, (all, now) =>
-      all.map(r => {
-        if (r !== all.find(x => x.agentId === loop && x.status === 'running')) return r
-        // The record wins over a verdict it contradicts: failed tasks or findings are issues.
-        const verdict: RunStatus = input.verdict === 'blocked' ? 'blocked' : verdictOf(r) === 'issues' ? 'issues' : input.verdict === 'issues' ? 'issues' : 'passed'
-        return finish(r, verdict, now, summary, verdict === 'blocked' ? clean(input.reason ?? input.summary ?? 'No reason given', 300) : undefined)
-      }),
-    )
-    const done = ended.find(r => r.agentId === loop)!
+    const end = (r: Run, now: number): Run => {
+      // The record wins over a verdict it contradicts: failed tasks or findings are issues.
+      const verdict: RunStatus = input.verdict === 'blocked' ? 'blocked' : verdictOf(r) === 'issues' || input.verdict === 'issues' ? 'issues' : 'passed'
+      return finish(r, verdict, now, 'tester', summary, verdict === 'blocked' ? clean(input.reason ?? input.summary ?? 'No reason given', 300) : undefined)
+    }
+    // Blocked before it planned anything: still a run the developer should see.
+    if (targetOf(await read($, runsAtom), loop) < 0) {
+      if (input.verdict !== 'blocked') return { deny: 'No test run here yet. Call test_plan first.' }
+      await startRun($, loop, loop === MAIN ? 'Claude' : 'Haiku test user', 'Test run')
+    }
+    const done = (await changeRun($, loop, end))!
     $.ui.toast(outcomeToast(done))
     return { result: `Run ended: ${STATUS_LABEL[done.status]}. Now give your final report.` }
   })
@@ -311,6 +366,7 @@ export const register: Register = on => {
     const runs = await read($, runsAtom)
     if (!runs[0]) return { result: 'No test run yet. Spawn the test-user:tester agent to run one.' }
     const now = await $.clock.now()
+    if (runs[0].status !== 'running') await markDelivered($, [runs[0]])
     const earlier = runs.slice(1).map(r => `- ${historyLine(r, now)}`)
     return { result: report(runs[0], now) + (earlier.length ? `\n\nEarlier runs:\n${earlier.join('\n')}` : '') }
   })

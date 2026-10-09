@@ -69,13 +69,71 @@ test('a tester run fills its tasks and findings and ends with the verdict', asyn
 
   const rep = await call($, 'test_report', {}, null)
   expect(String(rep.result)).toContain('Issues found: Checkout · localhost:5173 (feature, by Haiku test user')
-  expect(String(rep.result)).toContain('3. [-] Pay with the test card')
+  expect(String(rep.result)).toContain('3. [-] Pay with the test card (not reached)')
   expect(String(rep.result)).toContain('MAJOR [task 2]: Quantity resets on blur @ /cart')
   expect(String(rep.result)).toContain('Summary: Checkout mostly works')
+})
 
-  // Nothing is in progress for that loop now.
-  const late = await call($, 'test_finding', { severity: 'minor', title: 'late' })
-  expect(late.deny).toContain('No test run in progress')
+test('a tester resumed after its turn ended carries on with the same run', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  surface(on)
+  await $.agent.spawn({ subagentType: 'test-user:tester', prompt: 'Test the app' } as never)
+  await call($, 'test_plan', { target: 'Vively', tasks: ['Onboard', 'Record a headache', 'Open the calendar'] })
+  await call($, 'test_task', { task: 1, status: 'passed' })
+  await ($ as any).turn.complete({ answer: 'Paused.', durationMs: 1, isAborted: false, turnId: 't1', agentId: 'a1', reason: 'answer' })
+
+  // Resumed: its updates reopen the run instead of being refused.
+  const late = await call($, 'test_task', { task: 2, status: 'passed' })
+  expect(late.deny).toBeUndefined()
+  expect(String(late.result)).toContain('Now on task 3')
+  await call($, 'test_finding', { severity: 'minor', title: 'Legend omits medication' })
+  // Sending the same plan again keeps what was done.
+  const again = await call($, 'test_plan', { target: 'Vively', tasks: ['Onboard', 'Record a headache', 'Open the calendar'] })
+  expect(String(again.result)).toContain('1. Onboard (passed)')
+  await call($, 'test_task', { task: 3, status: 'passed' })
+  await call($, 'test_finish', { verdict: 'passed', summary: 'Works.' })
+
+  const rep = String((await call($, 'test_report', {}, null)).result)
+  expect(rep).toContain('Issues found')
+  expect(rep).toContain('3 passed, 0 failed, 3 total')
+  expect(rep).toContain('Legend omits medication')
+
+  // Claude amends the tester's run with its own re-check: the run stays ended.
+  await call($, 'test_finding', { severity: 'major', title: 'Bleeding sheet ignores saved value' }, null)
+  const amended = String((await call($, 'test_report', {}, null)).result)
+  expect(amended).toContain('MAJOR: Bleeding sheet ignores saved value')
+  expect(amended).toContain('Issues found')
+})
+
+test('the session gets the full record: on the Agent result, else on the next prompt', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  surface(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  on('tool.call', { tool: 'Agent' }, () => ({ result: { status: 'completed', content: [{ type: 'text', text: 'Pay is broken.' }] } as never }))
+
+  // A foreground Agent call: the tester (spawned under the call's id) runs and
+  // ends before the call returns; the kit plays those steps first.
+  await $.agent.spawn({ subagentType: 'test-user:tester', prompt: 'Test checkout', tool_use_id: 'tu1' } as never)
+  await call($, 'test_plan', { target: 'Checkout', tasks: ['Pay'] })
+  await call($, 'test_task', { task: 1, status: 'failed', note: 'Pay button dead' })
+  await ($ as any).turn.complete({ answer: 'Pay is broken.', durationMs: 1, isAborted: false, turnId: 't', agentId: 'a1', reason: 'answer' })
+  const ran = await $.tool.call({ tool: 'Agent', tool_use_id: 'tu1', subagent_type: 'test-user:tester', prompt: 'Test checkout', description: 'Test checkout' } as never)
+  expect(String(ran.context?.[0])).toContain('test-user results')
+  expect(String(ran.context?.[0])).toContain('1. [!] Pay — Pay button dead')
+
+  // Delivered once: the next prompt carries nothing more.
+  const quiet = await $.prompt.submit({ text: 'thanks' } as never)
+  expect('context' in quiet ? quiet.context ?? [] : []).toHaveLength(0)
+
+  // A background tester's run ends unseen: the next prompt (its notification) carries it.
+  await $.agent.spawn({ subagentType: 'test-user:tester', prompt: 'Test settings' } as never)
+  await call($, 'test_plan', { target: 'Settings', tasks: ['Toggle dark mode'] })
+  await call($, 'test_task', { task: 1, status: 'passed' })
+  await ($ as any).turn.complete({ answer: 'All fine.', durationMs: 1, isAborted: false, turnId: 't2', agentId: 'a1', reason: 'answer' })
+  const next = await $.prompt.submit({ text: 'how did it go?' } as never)
+  const context = 'context' in next ? (next.context ?? []) : []
+  expect(context).toHaveLength(1)
+  expect(String(context[0])).toContain('Passed: Settings')
 })
 
 test('a blocked run shows why, and Claude can record a run of its own', async ($, on) => {
