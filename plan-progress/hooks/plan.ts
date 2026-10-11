@@ -172,6 +172,46 @@ export function mark(plan: Plan, phase: number, step: number | undefined, status
   }
 }
 
+/**
+ * Catches up: closes every open step before the given one as done, sharing
+ * the time since the first of them began evenly between them, then sets the
+ * step itself (a step marked done takes its share too).
+ */
+export function markThrough(plan: Plan, phase: number, step: number, status: StepStatus, now: number): Plan {
+  const flat = plan.phases.flatMap((p, pi) => p.steps.map((s, si) => ({ s, pi, si })))
+  const at = flat.findIndex(x => x.pi === phase && x.si === step)
+  const closing = flat.slice(0, at).filter(x => !isClosed(x.s))
+  if (status === 'done' && !isClosed(flat[at]!.s)) closing.push(flat[at]!)
+  if (closing.length === 0) return mark(plan, phase, step, status, now)
+
+  const start = Math.min(now, closing[0]!.s.startedAt ?? lastEnd(plan))
+  const share = (now - start) / closing.length
+  const times = new Map(closing.map((x, i) => [`${x.pi}.${x.si}`, [start + i * share, start + (i + 1) * share]]))
+  const caught: Plan = {
+    ...plan,
+    phases: plan.phases.map((p, pi) => ({
+      ...p,
+      steps: p.steps.map((s, si) => {
+        const t = times.get(`${pi}.${si}`)
+        return t ? { ...s, status: 'done' as const, startedAt: Math.round(t[0]!), endedAt: Math.round(t[1]!) } : s
+      }),
+    })),
+  }
+  return status === 'done' ? caught : mark(caught, phase, step, status, now)
+}
+
+/** Whether a nudge is due: the tree has sat still for a while of steady work. */
+export function isStale(plan: Plan, quietMs: number, calls: number, callsSinceNudge: number): boolean {
+  const s = stats(plan, 0)
+  if (s.isFinished) return false
+  const done = plan.phases.flatMap(p => p.steps).filter(x => x.status === 'done').length
+  const pace = done > 0 ? (lastEnd(plan) - plan.createdAt) / done : 0
+  return calls >= NUDGE_CALLS && callsSinceNudge >= NUDGE_CALLS && quietMs >= Math.max(NUDGE_MS, 1.5 * pace)
+}
+
+export const NUDGE_CALLS = 6
+export const NUDGE_MS = 3 * 60_000
+
 export type Stats = {
   total: number
   closed: number

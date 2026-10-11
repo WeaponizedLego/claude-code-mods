@@ -54,6 +54,8 @@ Move auth to sessions                         20m in · ~40m left
 
 The status line carries the short form (`▰▰▱▱ 2/6 · phase 2/3: Switch over · 20m in · ~40m left`). Steps move when Claude calls the mod's `plan_mark` tool, or by themselves when Claude's tasks or todos are named like a step. Without plan mode, ask Claude to lay the work out in phases and it calls `plan_set`. The estimate is the pace so far times the steps left.
 
+During a run of small steps Claude can forget to mark them. When the tree hasn't moved for a while (at least 6 tool calls, and 3 minutes or 1.5× the pace so far, whichever is longer), the next tool result reminds Claude which step the tree shows. Claude can then catch up in one call: `plan_mark` with `through: true` closes every earlier open step and splits the elapsed time evenly between them.
+
 `/plan-progress` opens the tree (it also works mid-turn); `/plan-progress clear` stops tracking.
 
 ## test-user

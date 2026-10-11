@@ -182,3 +182,47 @@ test('a short pane folds the finished phases to one line', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: 'Update the login endpoint' })).toBeDefined()
   await ui.unmount()
 })
+
+test('a tree left still through steady work nudges the model to mark it', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  approve(on, PLAN)
+  on('tool.call', { tool: 'Write' }, () => ({ result: {} as never }))
+  await $.tool.call({ tool: 'ExitPlanMode' } as never)
+
+  const write = () => $.tool.call({ tool: 'Write', file_path: 'x', content: '' } as never)
+  // Quick calls do not nudge, however many.
+  for (let i = 0; i < 8; i++) expect((await write()).context).toBeUndefined()
+
+  await clock.advance(4 * 60_000)
+  const nudged = await write()
+  expect(nudged.context?.[0]).toContain('has not moved for 4m')
+  expect(nudged.context?.[0]).toContain('1.1 [>] Add the sessions table')
+  expect(nudged.context?.[0]).toContain('through: true')
+
+  // Not again until six more calls.
+  for (let i = 0; i < 5; i++) expect((await write()).context).toBeUndefined()
+  expect((await write()).context?.[0]).toContain('has not moved')
+
+  // A mark quiets it.
+  await $.tool.call({ tool: 'mcp__plan-progress__plan_mark', phase: 1, step: 1, status: 'done' } as never)
+  await clock.advance(4 * 60_000)
+  for (let i = 0; i < 5; i++) expect((await write()).context).toBeUndefined()
+})
+
+test('through: true catches up on every earlier open step, sharing the time', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  approve(on, PLAN)
+  await $.tool.call({ tool: 'ExitPlanMode' } as never)
+
+  await clock.advance(30 * 60_000)
+  const marked = await $.tool.call({ tool: 'mcp__plan-progress__plan_mark', phase: 2, step: 2, status: 'active', through: true } as never)
+  expect(String(marked.result)).toContain('3/6 steps')
+  expect(String(marked.result)).toContain('Current: 2.2 Update the login endpoint')
+  // Three steps in thirty minutes: ten each, and three to go.
+  expect(String(marked.result)).toContain('~30m left')
+
+  const ui = await $.ui.mount({ plugin: 'plan-progress', surface: 'terminal', ...pane() })
+  expect(await ui.find({ type: 'Text', text: ' 10m' })).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: 'Update the login endpoint' }))?.props.bold).toBe(true)
+  await ui.unmount()
+})

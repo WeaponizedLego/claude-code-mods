@@ -8,7 +8,9 @@ import {
   bar,
   duration,
   findStep,
+  isStale,
   mark,
+  markThrough,
   newPlan,
   outline,
   parsePlan,
@@ -30,9 +32,10 @@ const CELL_PX = 8
 const planAtom = atom({ plugin: 'plan-progress', key: 'plan' } as const, null)
 const nowAtom = atom({ plugin: 'plan-progress', key: 'now' } as const, 0)
 const tasksAtom = atom({ plugin: 'plan-progress', key: 'tasks' } as const, {})
+const quietAtom = atom({ plugin: 'plan-progress', key: 'quiet' } as const, { since: 0, calls: 0, nudgedAt: 0 })
 
 type PlanSetInput = { title?: string; phases?: { title?: string; steps?: string[] }[] }
-type PlanMarkInput = { phase?: number; step?: number; status?: StepStatus }
+type PlanMarkInput = { phase?: number; step?: number; status?: StepStatus; through?: boolean }
 
 // With nothing in progress, the first open step after the last one finished
 // becomes the current one, so its time starts counting.
@@ -43,10 +46,11 @@ function advance(plan: Plan, now: number): Plan {
   return next ? mark(plan, next.pi, next.si, 'active', now) : plan
 }
 
-async function setPlan($: EngineInterface, plan: Plan | null) {
+async function setPlan($: EngineInterface, plan: Plan | null, isMoved = true) {
   await update($, planAtom, () => plan)
   const t = await $.clock.now()
   await update($, nowAtom, () => t)
+  if (isMoved) await update($, quietAtom, () => ({ since: t, calls: 0, nudgedAt: 0 }))
   $.ui.status(plan ? statusLine(plan, t) : undefined)
 }
 
@@ -55,7 +59,8 @@ async function change($: EngineInterface, fn: (plan: Plan, now: number) => Plan)
   const before = await read($, planAtom)
   if (!before) return null
   const after = advance(fn(before, now), now)
-  await setPlan($, after)
+  // A todo list that names no step leaves the tree, and its quiet, as they were.
+  await setPlan($, after, JSON.stringify(after) !== JSON.stringify(before))
   return after
 }
 
@@ -74,6 +79,7 @@ const howToKeepIt = (plan: Plan) =>
     `plan-progress: the user sees this plan as a progress tree (${plan.phases.length} phases, ${plan.phases.flatMap(p => p.steps).length} steps):`,
     outline(plan),
     `Keep it current as you work: call ${MARK} with { phase, step, status } as you finish each step ("done"; the next step becomes current by itself) or skip one. ` +
+      `The tree moves only when you mark it, so mark each step the moment you move on, however small; to catch up after several, mark the one you are on with through: true. ` +
       `If you track the work with TaskCreate/TaskUpdate or TodoWrite instead, name the tasks exactly like the steps above and the tree follows them. ` +
       `If this tree misreads the plan, call ${SET} with the right phases and steps.`,
   ].join('\n\n')
@@ -120,6 +126,7 @@ export const register: Register = on => {
       description:
         "Update the user's plan progress tree. Mark a step done when you finish it (the next step becomes current by itself), " +
         'active when you start one out of order, skipped when you drop it, or leave out step to mark a whole phase. ' +
+        'With through: true every open step before it is marked done too, to catch up after finishing several. ' +
         'Phases and steps count from 1, as the outline shows them. Only use while a plan tree exists.',
       inputSchema: {
         type: 'object',
@@ -127,6 +134,7 @@ export const register: Register = on => {
           phase: { type: 'integer', minimum: 1 },
           step: { type: 'integer', minimum: 1, description: 'Leave out to mark every open step of the phase' },
           status: { type: 'string', enum: ['done', 'active', 'skipped', 'pending'] },
+          through: { type: 'boolean', description: 'Also mark every open step before this one done' },
         },
         required: ['phase', 'status'],
       },
@@ -203,12 +211,41 @@ export const register: Register = on => {
     }
     const status = input.status ?? 'done'
 
-    const after = (await change($, (p, now) => mark(p, pi, si, status, now)))!
+    const after = (await change($, (p, now) =>
+      input.through && si !== undefined ? markThrough(p, pi, si, status, now) : mark(p, pi, si, status, now),
+    ))!
     const now = await $.clock.now()
     const nextUp = after.phases.flatMap((p, i) => p.steps.map((s, j) => ({ s, at: `${i + 1}.${j + 1}` }))).find(x => x.s.status === 'active')
     const what = si === undefined ? `Phase ${pi + 1}` : `Step ${pi + 1}.${si + 1}`
     return { result: `${what} marked ${status}. ${progressText(after, now)}${nextUp ? `. Current: ${nextUp.at} ${nextUp.s.title}` : ''}` }
   })
+
+  // The tree moves only when the model marks it, and in a run of small steps
+  // it forgets to. When the tree has sat still through steady work, the next
+  // tool result tells it where the tree stands.
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    if (e.agentId || e.tool === MARK || e.tool === SET || ran.deny !== undefined) return ran
+    const plan = await read($, planAtom)
+    if (!plan || stats(plan, 0).isFinished) return ran
+
+    const quiet = await update($, quietAtom, q => ({ ...q, calls: q.calls + 1 }))
+    const now = await $.clock.now()
+    const quietMs = now - (quiet.since || plan.createdAt)
+    if (!isStale(plan, quietMs, quiet.calls, quiet.calls - quiet.nudgedAt)) return ran
+    await update($, quietAtom, q => ({ ...q, nudgedAt: q.calls }))
+
+    const steps = plan.phases.flatMap((p, pi) => p.steps.map((s, si) => ({ s, pi, si })))
+    const cur = steps.find(x => x.s.status === 'active') ?? steps.find(x => x.s.status === 'pending')!
+    const phase = plan.phases[cur.pi]!
+    const nudge =
+      `plan-progress: the user's progress tree has not moved for ${duration(quietMs)} (${quiet.calls} tool calls). ` +
+      `It shows ${cur.pi + 1}.${cur.si + 1} "${cur.s.title}" as current, in phase ${cur.pi + 1} "${phase.title}":\n` +
+      outline({ ...plan, phases: [phase] }).replace(/^(\s*)1\./gm, `$1${cur.pi + 1}.`) +
+      `\nIf you have moved past it, call ${MARK} now: mark the step you are on active with through: true, and every earlier open step is marked done. ` +
+      `If you are still on it, carry on.`
+    return { ...ran, context: [...(ran.context ?? []), nudge] }
+  }).catch(($, e, next) => next(e))
 
   // Tasks and todos named like a step move that step.
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
