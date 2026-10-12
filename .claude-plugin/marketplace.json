@@ -19,6 +19,11 @@
       "name": "test-user",
       "source": "./test-user",
       "description": "A Haiku test user that clicks through your locally running app and reports UI/UX issues, with a live pane of its tasks, findings and failures"
+    },
+    {
+      "name": "change-card",
+      "source": "./change-card",
+      "description": "A short card that explains what an agent changed on this branch: a headline, a few one-line changes, where to look first and what was not checked"
     }
   ]
 }
