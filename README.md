@@ -7,8 +7,9 @@ My [Claude Code mods](https://code.claude.com/docs/en/plugins/mods/overview.md),
 | [usage-band](usage-band) | A band above the prompt showing context fill, tokens, cost and rate limits: stat tiles in the desktop app, a coloured row in the terminal |
 | [plan-progress](plan-progress) | Reads a phased plan into a live progress tree: phases, steps, elapsed time and an estimate of what is left |
 | [test-user](test-user) | A Haiku test user that clicks through your locally running app and reports UI/UX issues: its task list, findings and failures in a live pane |
+| [change-card](change-card) | A short card explaining what an agent changed on this branch: a headline, a few one-line changes, where to look first and what was not checked |
 
-All three mods share one look: dark violet cards with a lilac accent. In the desktop app's Code tab they draw as images (cards, tiles, gradients); in the terminal they use the same colours as text.
+All four mods share one look: dark violet cards with a lilac accent. In the desktop app's Code tab they draw as images (cards, tiles, gradients); in the terminal they use the same colours as text.
 
 ![usage-band in the desktop app](docs/usage-band.png)
 
@@ -73,6 +74,16 @@ The session gets the full record, not just the tester's closing message: it ride
 Claude gets the same reporting tools (`test_plan`, `test_task`, `test_finding`, `test_finish`), so a test it runs by hand shows in the pane too, and it can amend the latest tester run with what it re-checked. If the tester stops without a verdict, the record decides it; a "passed" never hides a failed task.
 
 `/test-user` opens the pane; `/test-user run [what to test]` starts a run; `/test-user clear` forgets the runs.
+
+## change-card
+
+![change-card in the desktop app](docs/change-card.png)
+
+`/changes` opens a Changes pane and asks Claude to explain what changed on the branch since it forked from `origin/HEAD` (or `main`/`master`), uncommitted and untracked files included. Claude answers by filling in the mod's `change_card` tool, which keeps the card short by refusing anything over its limits: a 70-character headline, a one-sentence gist, at most 5 one-line changes (with an optional `before → after`), at most 3 places to look first and 3 things nobody checked. Every changed file has to sit under one of the changes (a path ending in `/` covers a folder), so nothing hides.
+
+When the code moves on after the card was written, the pane says which files and `/changes` asks Claude to update just what they affect. After a turn that leaves a sizeable diff (over 5 files or 200 lines) a toast suggests `/changes`, once per card; nothing is written unasked.
+
+`/changes <ref>` compares against another ref; `/changes clear` forgets the card.
 
 ## Adding a mod
 
