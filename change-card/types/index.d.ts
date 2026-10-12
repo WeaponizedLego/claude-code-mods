@@ -23,10 +23,21 @@ export type Card = {
   facts: Record<string, string>
 }
 
-export type Facts = {
-  // The ref compared against, and how it was found.
+// One repository the diff reads: the session's own, or each one in a folder of
+// checkouts (a task folder holding one worktree per repo).
+export type Repo = {
+  // '' for the session's own repository; else the folder's name, which prefixes its paths.
+  name: string
+  dir: string
+  // The commit compared against, and how it was found.
   base: string
   how: string
+}
+
+export type Facts = {
+  repos: Repo[]
+  // "58e1986 (fork point from origin/HEAD)", or one "<repo> <base>" per repository.
+  since: string
   files: Record<string, string>
   added: number
   deleted: number
