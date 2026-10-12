@@ -57,7 +57,11 @@ export function factsOf(diffs: RepoDiff[]): Facts {
     }
   }
   const repos = diffs.map(({ numstat: _n, untracked: _u, ...r }) => ({ ...r, base: r.base.slice(0, 7) }))
-  const since = repos.length === 1 && !repos[0]!.name ? `${repos[0]!.base} (${repos[0]!.how})` : repos.map(r => `${r.name} ${r.base}`).join(', ')
+  const one = repos[0]
+  const since =
+    repos.length === 1 && one && !one.name
+      ? `${one.base} (${one.how})${one.label ? ` · ${one.label}` : ''}`
+      : repos.map(r => `${r.name} ${r.base}`).join(', ')
   return { repos, since, files, added, deleted }
 }
 
@@ -80,7 +84,10 @@ export function factsText(f: Facts): string {
   const paths = Object.keys(f.files).sort()
   const listed = paths.slice(0, MAX_LISTED).map(p => `  ${f.files[p]}\t${p}`)
   if (paths.length > MAX_LISTED) listed.push(`  … and ${paths.length - MAX_LISTED} more`)
-  const read = f.repos.map(r => (r.name ? `  ${r.name}/…: git -C ${r.dir} diff ${r.base} -- <path inside ${r.name}>` : `  git diff ${r.base} -- <path>`))
+  const range = (r: Repo) => (r.tip ? `${r.base} ${r.tip}` : r.base)
+  const read = f.repos.map(r =>
+    r.name ? `  ${r.name}/…: git -C ${r.dir} diff ${range(r)} -- <path inside ${r.name}>` : `  git -C ${r.dir} diff ${range(r)} -- <path>`,
+  )
   return `${plural(paths.length, 'file')} changed since ${f.since}, +${f.added} -${f.deleted}:\n${listed.join('\n')}\n\nRead a file's diff with:\n${read.join('\n')}`
 }
 

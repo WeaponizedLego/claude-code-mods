@@ -32,6 +32,10 @@ export type Repo = {
   // The commit compared against, and how it was found.
   base: string
   how: string
+  // A branch compared at its tip (committed work only) instead of the checkout's files.
+  tip?: string
+  // "worktree feature/x" or "branch x" when /changes picked one; absent for the session's own checkout.
+  label?: string
 }
 
 export type Facts = {
@@ -51,6 +55,8 @@ declare module 'claude-code' {
       facts: Facts | null
       // A ref /changes was given, used in place of the fork point.
       baseRef: string | null
+      // A worktree or branch /changes was pointed at, explained instead of the session's checkout.
+      focus: string | null
       // The diff a nudge was last shown for, so it is shown once.
       nudged: string | null
     }

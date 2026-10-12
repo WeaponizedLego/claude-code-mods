@@ -83,7 +83,7 @@ Claude gets the same reporting tools (`test_plan`, `test_task`, `test_finding`, 
 
 When the code moves on after the card was written, the pane says which files and `/changes` asks Claude to update just what they affect. After a turn that leaves a sizeable diff (over 5 files or 200 lines) a toast suggests `/changes`, once per card; nothing is written unasked.
 
-`/changes <ref>` compares against another ref; `/changes clear` forgets the card.
+`/changes <worktree or branch>` explains that one instead of the session's own checkout: a worktree by its path, folder name, branch or any unique part of those (`/changes PLAT-421`), or a local branch at its tip. When the session's checkout has nothing changed (say, `main` with the work in `.claude/worktrees/`), `/changes` lists the worktrees that do. `/changes <ref>` compares against another ref; `/changes clear` forgets the card.
 
 ## Adding a mod
 
