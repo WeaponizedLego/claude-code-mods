@@ -97,7 +97,7 @@ test('/changes asks for a card, says when it is current, and asks for an update 
   const first = await $.command.run({ command: 'changes', args: '' } as never)
   await clock.advance(1)
   expect(first.text).toContain('Asking Claude for a change card')
-  expect(w.prompts[0]).toContain(`Write a change card for this branch with ${TOOL}`)
+  expect(w.prompts[0]).toContain(`Write a change card with ${TOOL} for this branch`)
   expect(w.prompts[0]).toContain('5 files changed since 58e1986 (fork point from origin/HEAD), +243 -7')
   expect(w.prompts[0]).toContain('new\tsrc/auth/sessionStore.test.ts')
 
@@ -116,7 +116,7 @@ test('/changes asks for a card, says when it is current, and asks for an update 
   expect((await term.find({ type: 'Text', text: '1 file changed since this card' }))?.props.color).toBe(LOOK.warn)
   await term.unmount()
 
-  expect((await $.command.run({ command: 'changes', args: 'nope' } as never)).text).toBe('Not a commit here: nope')
+  expect((await $.command.run({ command: 'changes', args: 'nope' } as never)).text).toBe('No worktree, branch or commit here matches "nope".')
   expect((await $.command.run({ command: 'changes', args: 'clear' } as never)).text).toBe('Forgot the change card.')
 })
 
@@ -182,5 +182,45 @@ test('a folder of worktrees reads every repository in it, paths prefixed by its 
     gist: 'The API answers /health and the web app shows it.',
     changes: [{ kind: 'new', title: 'Health endpoint', files: ['api/'] }, { kind: 'new', title: 'Status badge', files: ['web/src/app.tsx'] }],
   })
+  expect(shown.deny).toBeUndefined()
+})
+
+test('from a clean main checkout, /changes lists the worktrees with changes and explains the one named', async ($, on) => {
+  const prompts: string[] = []
+  const clock = mock.clock(on, { now: 0 })
+  const MAIN = '/code/app'
+  const WT = '/code/app/.claude/worktrees/feature+APP-42_sessions'
+  on('process.run', (_$, e) => {
+    const cwd = e.init?.cwd ?? MAIN
+    const [, cmd, ...rest] = e.argv
+    const out = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '' } }) as never
+    const fail = { value: { exitCode: 1, stdout: '', stderr: '' } } as never
+    if (cmd === 'rev-parse' && rest[0] === '--show-toplevel') return out(`${cwd}\n`)
+    if (cmd === 'worktree') return out(`worktree ${MAIN}\nHEAD 58e1986\nbranch refs/heads/main\n\nworktree ${WT}\nHEAD 37c969c\nbranch refs/heads/feature/APP-42_sessions\n`)
+    if (cmd === 'merge-base') return rest[1] === 'origin/HEAD' ? out('58e19863fa\n') : fail
+    if (cmd === 'diff') return out(cwd === WT ? '50\t3\tsrc/session.ts\n9\t1\tsrc/login.ts' : '')
+    if (cmd === 'ls-files') return out('')
+    return fail
+  })
+  on('ui.open', () => ({ value: { isPlaced: true as const } }) as never)
+  on('prompt.submit', (_$, e) => {
+    prompts.push(e.text)
+    return { text: e.text }
+  })
+
+  const first = await $.command.run({ command: 'changes', args: '' } as never)
+  expect(first.text).toContain('Nothing changed in this checkout since 58e1986')
+  expect(first.text).toContain('feature+APP-42_sessions (feature/APP-42_sessions): 2 files')
+  expect(prompts).toHaveLength(0)
+
+  const picked = await $.command.run({ command: 'changes', args: 'APP-42' } as never)
+  await clock.advance(1)
+  expect(picked.text).toContain('Asking Claude for a change card')
+  expect(prompts[0]).toContain('for the worktree feature/APP-42_sessions')
+  expect(prompts[0]).toContain('2 files changed since 58e1986 (fork point from origin/HEAD) · worktree feature/APP-42_sessions')
+  expect(prompts[0]).toContain(`git -C ${WT} diff 58e1986 -- <path>`)
+
+  // The focus stays: a card for it is accepted against the worktree's files.
+  const shown = await call($, { title: 'Sessions', gist: 'Logins create sessions.', changes: [{ kind: 'new', title: 'Sessions', files: ['src/'] }] })
   expect(shown.deny).toBeUndefined()
 })

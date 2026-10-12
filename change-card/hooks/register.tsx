@@ -15,6 +15,7 @@ const CELL_PX = 8
 const cardAtom = atom({ plugin: 'change-card', key: 'card' } as const, null)
 const factsAtom = atom({ plugin: 'change-card', key: 'facts' } as const, null)
 const baseAtom = atom({ plugin: 'change-card', key: 'baseRef' } as const, null)
+const focusAtom = atom({ plugin: 'change-card', key: 'focus' } as const, null)
 const nudgedAtom = atom({ plugin: 'change-card', key: 'nudged' } as const, null)
 
 async function git($: EngineInterface, args: string[], cwd?: string) {
@@ -22,27 +23,58 @@ async function git($: EngineInterface, args: string[], cwd?: string) {
   return r && r.exitCode === 0 ? r.stdout : null
 }
 
-/** The commit a repository is compared against: the ref asked for, else its fork point. */
-async function baseOf($: EngineInterface, dir: string, baseRef: string | null): Promise<{ base: string; how: string } | null> {
+/** The commit a repository is compared against: the ref asked for, else where `tip` forked. */
+async function baseOf($: EngineInterface, dir: string, baseRef: string | null, tip = 'HEAD'): Promise<{ base: string; how: string } | null> {
   if (baseRef) {
     const base = (await git($, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`], dir))?.trim()
     return base ? { base, how: baseRef } : null
   }
   for (const ref of FORK_REFS) {
-    const base = (await git($, ['merge-base', 'HEAD', ref], dir))?.trim()
+    const base = (await git($, ['merge-base', tip, ref], dir))?.trim()
     if (base) return { base, how: `fork point from ${ref}` }
   }
-  const head = (await git($, ['rev-parse', 'HEAD'], dir))?.trim()
+  const head = (await git($, ['rev-parse', tip], dir))?.trim()
   return head ? { base: head, how: 'uncommitted work only' } : null
 }
 
+const baseName = (path: string) => path.replace(/\/$/, '').split('/').pop() ?? path
+
+type Checkout = { path: string; branch: string }
+
+/** Every worktree of the repository at `dir`, its own checkout included. */
+async function worktreesOf($: EngineInterface, dir: string): Promise<Checkout[]> {
+  const out = (await git($, ['worktree', 'list', '--porcelain'], dir)) ?? ''
+  return out
+    .split('\n\n')
+    .map(block => {
+      const path = /^worktree (.+)$/m.exec(block)?.[1] ?? ''
+      const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1] ?? ''
+      return { path, branch }
+    })
+    .filter(w => w.path)
+}
+
+type Target = { name: string; dir: string; tip?: string; label?: string }
+
+/** A worktree (by path, folder or branch, or a unique part of one) or a local branch of the session's repository. */
+async function targetOf($: EngineInterface, top: string, focus: string): Promise<Target | null> {
+  const all = await worktreesOf($, top)
+  const want = focus.toLowerCase()
+  const exact = all.find(w => w.path === focus || baseName(w.path) === focus || w.branch === focus)
+  const loose = all.filter(w => `${w.branch} ${baseName(w.path)}`.toLowerCase().includes(want))
+  const hit = exact ?? (loose.length === 1 ? loose[0] : undefined)
+  if (hit) return { name: '', dir: hit.path, ...(hit.path !== top && { label: `worktree ${hit.branch || baseName(hit.path)}` }) }
+  if (await git($, ['rev-parse', '--verify', '--quiet', `refs/heads/${focus}`], top)) return { name: '', dir: top, tip: focus, label: `branch ${focus}` }
+  return null
+}
+
 /** The session's repository; else, in a folder of checkouts, each child with a .git (a clone or a worktree). */
-async function reposHere($: EngineInterface): Promise<Array<{ name: string; dir: string }>> {
+async function reposHere($: EngineInterface): Promise<Target[]> {
   const top = (await git($, ['rev-parse', '--show-toplevel']))?.trim()
   if (top) return [{ name: '', dir: top }]
   const cwd = await $.session.cwd()
   const children = (await $.fs.list(cwd).catch(() => [])).filter(c => c.kind === 'dir' && !c.name.startsWith('.'))
-  const found: Array<{ name: string; dir: string }> = []
+  const found: Target[] = []
   for (const c of children) {
     const dir = `${cwd.replace(/\/$/, '')}/${c.name}`
     const inside = await $.fs.list(dir).catch(() => [])
@@ -51,21 +83,48 @@ async function reposHere($: EngineInterface): Promise<Array<{ name: string; dir:
   return found
 }
 
-/** What changed since the base, read from git; null when no repository is here or the ref is in none. */
-async function collect($: EngineInterface, baseRef: string | null): Promise<Facts | null> {
+async function diffOf($: EngineInterface, t: Target, baseRef: string | null): Promise<RepoDiff | null> {
+  const b = await baseOf($, t.dir, baseRef, t.tip)
+  if (!b) return null
+  const numstat = (await git($, ['diff', '--numstat', '--no-renames', b.base, ...(t.tip ? [t.tip] : [])], t.dir)) ?? ''
+  // A branch away from its checkout has no working files to add.
+  const untracked = t.tip ? '' : ((await git($, ['ls-files', '--others', '--exclude-standard'], t.dir)) ?? '')
+  return { ...t, ...b, numstat, untracked }
+}
+
+/** What changed since the base, read from git; null when no repository is here, or the focus or ref matches nothing. */
+async function collect($: EngineInterface, baseRef: string | null, focus: string | null): Promise<Facts | null> {
+  let targets: Target[]
+  if (focus) {
+    const top = (await git($, ['rev-parse', '--show-toplevel']))?.trim()
+    const t = top ? await targetOf($, top, focus) : null
+    if (!t) return null
+    targets = [t]
+  } else targets = await reposHere($)
   const diffs: RepoDiff[] = []
-  for (const r of await reposHere($)) {
-    const b = await baseOf($, r.dir, baseRef)
-    if (!b) continue
-    const numstat = (await git($, ['diff', '--numstat', '--no-renames', b.base], r.dir)) ?? ''
-    const untracked = (await git($, ['ls-files', '--others', '--exclude-standard'], r.dir)) ?? ''
-    diffs.push({ ...r, ...b, numstat, untracked })
+  for (const t of targets) {
+    const d = await diffOf($, t, baseRef)
+    if (d) diffs.push(d)
   }
   return diffs.length ? factsOf(diffs) : null
 }
 
+/** The other worktrees of the session's repository that have changes, for when its own checkout has none. */
+async function busyWorktrees($: EngineInterface): Promise<string[]> {
+  const top = (await git($, ['rev-parse', '--show-toplevel']))?.trim()
+  if (!top) return []
+  const lines: string[] = []
+  for (const w of await worktreesOf($, top)) {
+    if (w.path === top) continue
+    const d = await diffOf($, { name: '', dir: w.path }, null)
+    const n = d ? Object.keys(factsOf([d]).files).length : 0
+    if (n) lines.push(`  ${baseName(w.path)}${w.branch && w.branch !== baseName(w.path) ? ` (${w.branch})` : ''}: ${plural(n, 'file')}`)
+  }
+  return lines
+}
+
 async function refresh($: EngineInterface): Promise<Facts | null> {
-  const facts = await collect($, await read($, baseAtom))
+  const facts = await collect($, await read($, baseAtom), await read($, focusAtom))
   await update($, factsAtom, () => facts)
   return facts
 }
@@ -135,8 +194,8 @@ export const register: Register = on => {
     })
     await $.command.register({
       name: 'changes',
-      description: 'Show the change card for this branch; Claude writes or updates it when needed ([ref]: compare against a ref; clear: forget it)',
-      argumentHint: '[ref | clear]',
+      description: 'Show the change card for this branch; Claude writes or updates it when needed ([worktree | branch]: explain that one; [ref]: compare against it; clear: forget it)',
+      argumentHint: '[worktree | branch | ref | clear]',
       immediate: true,
     })
 
@@ -161,18 +220,45 @@ export const register: Register = on => {
     if (arg === 'clear') {
       await update($, cardAtom, () => null)
       await update($, baseAtom, () => null)
+      await update($, focusAtom, () => null)
       await $.ui.close({ id: PANE }).catch(() => {})
       return { text: 'Forgot the change card.' }
     }
-    if (arg) await update($, baseAtom, () => arg)
 
-    const facts = await refresh($)
-    if (!facts) {
-      if (arg) await update($, baseAtom, () => null)
-      return { text: arg ? `Not a commit here: ${arg}` : 'No git repository here, nor in the folders directly under it.' }
+    // An argument names a worktree or branch to explain, else a commit to compare against.
+    let facts: Facts | null
+    if (arg) {
+      const before = { base: await read($, baseAtom), focus: await read($, focusAtom) }
+      await update($, baseAtom, () => null)
+      await update($, focusAtom, () => arg)
+      facts = await refresh($)
+      if (!facts) {
+        await update($, focusAtom, () => null)
+        await update($, baseAtom, () => arg)
+        facts = await refresh($)
+      }
+      if (!facts) {
+        await update($, baseAtom, () => before.base)
+        await update($, focusAtom, () => before.focus)
+        await refresh($)
+        return { text: `No worktree, branch or commit here matches "${arg}".` }
+      }
+      // A new target is a new card.
+      await update($, cardAtom, () => null)
+    } else {
+      facts = await refresh($)
+      if (!facts) return { text: 'No git repository here, nor in the folders directly under it.' }
     }
     await openPane($)
-    if (Object.keys(facts.files).length === 0) return { text: `Nothing changed since ${facts.since}.` }
+
+    if (Object.keys(facts.files).length === 0) {
+      const busy = arg ? [] : await busyWorktrees($)
+      return {
+        text: busy.length
+          ? `Nothing changed in this checkout since ${facts.since}. Worktrees with changes:\n${busy.join('\n')}\nRun /changes <name> to explain one.`
+          : `Nothing changed since ${facts.since}.`,
+      }
+    }
 
     const card = await read($, cardAtom)
     const moved = card ? movedSince(card, facts) : []
@@ -182,7 +268,7 @@ export const register: Register = on => {
       card && !arg
         ? `Update the change card with ${TOOL}. ${plural(moved.length, 'file')} changed since it was written: ${moved.join(', ')}. ` +
           `Read what moved and rewrite only what it affects; keep what is still true.\n\nThe card now:\n${cardText(card)}`
-        : `Write a change card for this branch with ${TOOL}.`
+        : `Write a change card with ${TOOL} for ${facts.repos.length === 1 && facts.repos[0]!.label ? `the ${facts.repos[0]!.label}` : 'this branch'}.`
     // Submitted once this command has returned: a prompt from inside it would wait on itself.
     const text = `${ask}\n\n${factsText(facts)}`
     $.clock.after(0, () => void $.prompt.submit({ text }).catch(() => $.ui.toast('change-card: could not ask Claude; ask for a change card yourself')))
