@@ -61,7 +61,7 @@ const svg = (W: number, H: number, body: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" ${FONT}>${body}</svg>`
 
 const num = (n: number) => String(n).replace(/\B(?=(\d{3})+$)/g, ',')
-export const statLine = (f: Facts) => `${plural(Object.keys(f.files).length, 'file')} · +${num(f.added)} −${num(f.deleted)} · since ${f.base} (${f.how})`
+export const statLine = (f: Facts) => `${plural(Object.keys(f.files).length, 'file')} · +${num(f.added)} −${num(f.deleted)} · since ${f.since}`
 
 const GAP = 10
 const ROW = 22

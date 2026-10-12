@@ -66,7 +66,7 @@ test('the card is refused until it is short and covers every changed file, then 
   expect(long.deny).toContain('No change covers 1 file: README.md')
 
   const wrongPath = await call($, { ...good, changes: [...good.changes, { kind: 'fix', title: 'x', files: ['src/nope.ts'] }] })
-  expect(wrongPath.deny).toContain('Not changed since 58e1986: src/nope.ts')
+  expect(wrongPath.deny).toContain('Not among the changed files: src/nope.ts')
 
   const shown = await call($, good)
   expect(shown.deny).toBeUndefined()
@@ -137,4 +137,50 @@ test('a turn that grows a big diff nudges once, until a card is written', async 
   w.repo.numstat += '\n1\t0\tsrc/g.ts'
   await end()
   expect(w.toasts).toHaveLength(1)
+})
+
+test('a folder of worktrees reads every repository in it, paths prefixed by its name', async ($, on) => {
+  const prompts: string[] = []
+  const dir = (name: string) => ({ name, kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })
+  const file = (name: string) => ({ name, kind: 'file' as const, size: 89, mtimeMs: 0, isLink: false })
+  on('session.cwd', () => ({ value: '/task' }) as never)
+  on('fs.list', (_$, e) => {
+    const listing: Record<string, unknown[]> = {
+      '/task': [dir('.claude'), dir('api'), dir('web'), dir('notes')],
+      '/task/api': [file('.git'), dir('src')],
+      '/task/web': [dir('.git'), dir('src')],
+      '/task/notes': [file('todo.md')],
+    }
+    return { value: listing[e.path] ?? [] } as never
+  })
+  on('process.run', (_$, e) => {
+    const cwd = e.init?.cwd
+    const [, cmd, ...rest] = e.argv
+    const out = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '' } }) as never
+    const fail = { value: { exitCode: 128, stdout: '', stderr: 'not a git repository' } } as never
+    if (!cwd) return fail
+    if (cmd === 'merge-base') return rest[1] === 'origin/HEAD' ? out(cwd === '/task/api' ? 'aaaaaaa111\n' : 'bbbbbbb222\n') : fail
+    if (cmd === 'diff') return out(cwd === '/task/api' ? '10\t2\tsrc/server.ts' : '4\t0\tsrc/app.tsx')
+    if (cmd === 'ls-files') return out('')
+    return fail
+  })
+  on('ui.open', () => ({ value: { isPlaced: true as const } }) as never)
+  on('prompt.submit', (_$, e) => {
+    prompts.push(e.text)
+    return { text: e.text }
+  })
+  const clock = mock.clock(on, { now: 0 })
+
+  await $.command.run({ command: 'changes', args: '' } as never)
+  await clock.advance(1)
+  expect(prompts[0]).toContain('2 files changed since api aaaaaaa, web bbbbbbb, +14 -2')
+  expect(prompts[0]).toContain('+10 -2\tapi/src/server.ts')
+  expect(prompts[0]).toContain('api/…: git -C /task/api diff aaaaaaa -- <path inside api>')
+
+  const shown = await call($, {
+    title: 'Health endpoint and its status badge',
+    gist: 'The API answers /health and the web app shows it.',
+    changes: [{ kind: 'new', title: 'Health endpoint', files: ['api/'] }, { kind: 'new', title: 'Status badge', files: ['web/src/app.tsx'] }],
+  })
+  expect(shown.deny).toBeUndefined()
 })

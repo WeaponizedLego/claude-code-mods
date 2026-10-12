@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Facts } from '../types'
 import { FORK_REFS, factsOf, KIND_GLYPH, KINDS, LIMIT, cardText, changedFiles, check, factsText, isBig, movedSince, plural, shortPath, signature } from './card'
-import type { CardInput } from './card'
+import type { CardInput, RepoDiff } from './card'
 import { C, KIND_COLOR, cardSvg, emptySvg, statLine } from './look'
 
 const PANE = 'change-card'
@@ -22,35 +22,46 @@ async function git($: EngineInterface, args: string[], cwd?: string) {
   return r && r.exitCode === 0 ? r.stdout : null
 }
 
-/** What changed since the base, read from git; null outside a repository. */
-async function collect($: EngineInterface, baseRef: string | null): Promise<Facts | null> {
-  const top = (await git($, ['rev-parse', '--show-toplevel']))?.trim()
-  if (!top) return null
-
-  let base = ''
-  let how = ''
+/** The commit a repository is compared against: the ref asked for, else its fork point. */
+async function baseOf($: EngineInterface, dir: string, baseRef: string | null): Promise<{ base: string; how: string } | null> {
   if (baseRef) {
-    base = (await git($, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`], top))?.trim() ?? ''
-    if (!base) return null
-    how = baseRef
-  } else {
-    for (const ref of FORK_REFS) {
-      base = (await git($, ['merge-base', 'HEAD', ref], top))?.trim() ?? ''
-      if (base) {
-        how = `fork point from ${ref}`
-        break
-      }
-    }
-    if (!base) {
-      base = (await git($, ['rev-parse', 'HEAD'], top))?.trim() ?? ''
-      how = 'uncommitted work only'
-    }
-    if (!base) return null
+    const base = (await git($, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`], dir))?.trim()
+    return base ? { base, how: baseRef } : null
   }
+  for (const ref of FORK_REFS) {
+    const base = (await git($, ['merge-base', 'HEAD', ref], dir))?.trim()
+    if (base) return { base, how: `fork point from ${ref}` }
+  }
+  const head = (await git($, ['rev-parse', 'HEAD'], dir))?.trim()
+  return head ? { base: head, how: 'uncommitted work only' } : null
+}
 
-  const numstat = (await git($, ['diff', '--numstat', '--no-renames', base], top)) ?? ''
-  const untracked = (await git($, ['ls-files', '--others', '--exclude-standard'], top)) ?? ''
-  return factsOf(base, how, numstat, untracked)
+/** The session's repository; else, in a folder of checkouts, each child with a .git (a clone or a worktree). */
+async function reposHere($: EngineInterface): Promise<Array<{ name: string; dir: string }>> {
+  const top = (await git($, ['rev-parse', '--show-toplevel']))?.trim()
+  if (top) return [{ name: '', dir: top }]
+  const cwd = await $.session.cwd()
+  const children = (await $.fs.list(cwd).catch(() => [])).filter(c => c.kind === 'dir' && !c.name.startsWith('.'))
+  const found: Array<{ name: string; dir: string }> = []
+  for (const c of children) {
+    const dir = `${cwd.replace(/\/$/, '')}/${c.name}`
+    const inside = await $.fs.list(dir).catch(() => [])
+    if (inside.some(e => e.name === '.git')) found.push({ name: c.name, dir })
+  }
+  return found
+}
+
+/** What changed since the base, read from git; null when no repository is here or the ref is in none. */
+async function collect($: EngineInterface, baseRef: string | null): Promise<Facts | null> {
+  const diffs: RepoDiff[] = []
+  for (const r of await reposHere($)) {
+    const b = await baseOf($, r.dir, baseRef)
+    if (!b) continue
+    const numstat = (await git($, ['diff', '--numstat', '--no-renames', b.base], r.dir)) ?? ''
+    const untracked = (await git($, ['ls-files', '--others', '--exclude-standard'], r.dir)) ?? ''
+    diffs.push({ ...r, ...b, numstat, untracked })
+  }
+  return diffs.length ? factsOf(diffs) : null
 }
 
 async function refresh($: EngineInterface): Promise<Facts | null> {
@@ -135,8 +146,8 @@ export const register: Register = on => {
 
   on('tool.call', { tool: TOOL }, async ($, e) => {
     const facts = await refresh($)
-    if (!facts) return { deny: 'Not inside a git repository, or the base ref is gone: there is nothing to compare against.' }
-    if (Object.keys(facts.files).length === 0) return { deny: `Nothing changed since ${facts.base} (${facts.how}).` }
+    if (!facts) return { deny: 'No git repository here or in the folders directly under it, or the base ref is gone: there is nothing to compare against.' }
+    if (Object.keys(facts.files).length === 0) return { deny: `Nothing changed since ${facts.since}.` }
     const checked = check(e as unknown as CardInput, facts, await $.clock.now())
     if ('errors' in checked) return { deny: `The card was not shown. Fix all of these and call ${TOOL} again:\n- ${checked.errors.join('\n- ')}` }
     await update($, cardAtom, () => checked.card)
@@ -158,10 +169,10 @@ export const register: Register = on => {
     const facts = await refresh($)
     if (!facts) {
       if (arg) await update($, baseAtom, () => null)
-      return { text: arg ? `Not a commit here: ${arg}` : 'Not inside a git repository.' }
+      return { text: arg ? `Not a commit here: ${arg}` : 'No git repository here, nor in the folders directly under it.' }
     }
     await openPane($)
-    if (Object.keys(facts.files).length === 0) return { text: `Nothing changed since ${facts.base} (${facts.how}).` }
+    if (Object.keys(facts.files).length === 0) return { text: `Nothing changed since ${facts.since}.` }
 
     const card = await read($, cardAtom)
     const moved = card ? movedSince(card, facts) : []
@@ -173,7 +184,7 @@ export const register: Register = on => {
           `Read what moved and rewrite only what it affects; keep what is still true.\n\nThe card now:\n${cardText(card)}`
         : `Write a change card for this branch with ${TOOL}.`
     // Submitted once this command has returned: a prompt from inside it would wait on itself.
-    const text = `${ask}\n\n${factsText(facts)}\n\nRead a file's diff with \`git diff ${facts.base} -- <path>\`.`
+    const text = `${ask}\n\n${factsText(facts)}`
     $.clock.after(0, () => void $.prompt.submit({ text }).catch(() => $.ui.toast('change-card: could not ask Claude; ask for a change card yourself')))
     return { text: card && !arg ? 'Asking Claude to update the change card.' : 'Asking Claude for a change card.' }
   })
