@@ -328,7 +328,7 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     if (!plan) {
       return (
-        <Box flexDirection="column" borderStyle="round" borderColor={C.stroke} paddingX={1}>
+        <Box flexDirection="column" borderStyle="round" borderColor={C.edge} paddingX={1}>
           <Text bold color={C.text}>
             No plan yet
           </Text>
@@ -355,8 +355,8 @@ export const register: Register = on => {
     const cells = Math.max(6, Math.min(24, e.props.bodyColumns - 36))
     const { filled, track } = bar(s.percent, cells)
     const glyph: Record<string, [string, Color]> = {
-      done: ['✓', C.accent],
-      active: ['●', C.glow],
+      done: ['✓', C.text],
+      active: ['●', C.accent],
       pending: ['○', C.dim],
       skipped: ['–', C.dim],
     }
@@ -395,12 +395,12 @@ export const register: Register = on => {
           </Text>
           <Box flexDirection="row">
             <Text color={C.muted}>{` ${duration(s.elapsedMs)} ${s.isFinished ? 'total' : 'in'}`}</Text>
-            {!s.isFinished && s.remainingMs != null && <Text color={C.accent}>{` · ~${duration(s.remainingMs)} left`}</Text>}
+            {!s.isFinished && s.remainingMs != null && <Text color={C.soft}>{` · ~${duration(s.remainingMs)} left`}</Text>}
           </Box>
         </Box>
         <Box flexDirection="row">
-          <Text color={C.accent}>{filled}</Text>
-          <Text color={C.track}>{track}</Text>
+          <Text color={C.text}>{filled}</Text>
+          <Text color={C.dim}>{track}</Text>
           <Text bold color={C.text}>
             {` ${s.percent}%`}
           </Text>
@@ -417,7 +417,7 @@ export const register: Register = on => {
             <Box flexDirection="row" justifyContent="space-between" key={`phase-${pi}`}>
               <Box flexDirection="row" flexShrink={1}>
                 <Text color={color}>{`${g} `}</Text>
-                <Text color={C.muted}>{`${pi + 1} `}</Text>
+                <Text color={pi === current ? C.accent : C.muted}>{`${pi + 1} `}</Text>
                 <Text bold={pi === current} color={state === 'pending' && pi !== current ? C.soft : C.text} wrap="truncate">
                   {p.title}
                 </Text>
@@ -428,7 +428,7 @@ export const register: Register = on => {
           if (!isOpen[pi]) return [head]
           if (pi === current) {
             return [
-              <Box flexDirection="column" borderStyle="round" borderColor={C.deep} paddingX={1} key={`now-${pi}`}>
+              <Box flexDirection="column" borderStyle="round" borderColor={C.accent} paddingX={1} key={`now-${pi}`}>
                 {head}
                 {p.steps.map((_, si) => stepRow(pi, si, true))}
               </Box>,
