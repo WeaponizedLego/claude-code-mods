@@ -317,7 +317,7 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     if (!card) {
       return (
-        <Box flexDirection="column" borderStyle="round" borderColor={C.stroke} paddingX={1}>
+        <Box flexDirection="column" borderStyle="round" borderColor={C.edge} paddingX={1}>
           <Text bold color={C.text}>
             No change card yet
           </Text>
@@ -332,8 +332,8 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column" key="change-card">
         {moved.length > 0 && (
-          <Box flexDirection="column" borderStyle="round" borderColor={C.warn} paddingX={1} key="moved">
-            <Text bold color={C.warn}>{`${plural(moved.length, 'file')} changed since this card`}</Text>
+          <Box flexDirection="column" borderStyle="round" borderColor={C.accent} paddingX={1} key="moved">
+            <Text bold color={C.accent}>{`${plural(moved.length, 'file')} changed since this card`}</Text>
             <Text color={C.muted} wrap="truncate">{`${moved.slice(0, 4).map(shortPath).join(', ')}${moved.length > 4 ? ', …' : ''} · /changes to update`}</Text>
           </Box>
         )}
@@ -365,7 +365,7 @@ export const register: Register = on => {
             row,
             <Box flexDirection="row" key={`shift-${i}`}>
               <Text color={C.muted} wrap="truncate">{`    ${c.before ?? '…'}`}</Text>
-              <Text color={C.accent}>{' → '}</Text>
+              <Text color={C.dim}>{' → '}</Text>
               <Text color={C.soft} wrap="truncate">
                 {c.after ?? '…'}
               </Text>
@@ -376,11 +376,11 @@ export const register: Register = on => {
         {card.look.length > 0 && (
           <Box flexDirection="column" key="look">
             <Text> </Text>
-            <Text bold color={C.text}>
+            <Text bold color={C.accent}>
               Look here first
             </Text>
             {card.look.flatMap((s, i) => [
-              <Text color={C.glow} wrap="truncate" key={`look-${i}`}>{`  ${shortPath(s.file)}${s.line ? `:${s.line}` : ''}`}</Text>,
+              <Text color={C.text} wrap="truncate" key={`look-${i}`}>{`  ${shortPath(s.file)}${s.line ? `:${s.line}` : ''}`}</Text>,
               <Text color={C.soft} wrap="wrap" key={`why-${i}`}>{`    ${s.why}`}</Text>,
             ])}
           </Box>
@@ -389,7 +389,7 @@ export const register: Register = on => {
         {card.unchecked.length > 0 && (
           <Box flexDirection="column" key="unchecked">
             <Text> </Text>
-            <Text bold color={C.warn}>
+            <Text bold color={C.accent}>
               Not checked
             </Text>
             {card.unchecked.map((u, i) => (
