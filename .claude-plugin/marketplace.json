@@ -24,6 +24,11 @@
       "name": "change-card",
       "source": "./change-card",
       "description": "A short card that explains what an agent changed on this branch: a headline, a few one-line changes, where to look first and what was not checked"
+    },
+    {
+      "name": "control-tower",
+      "source": "./control-tower",
+      "description": "A board for a sentinel-hill hub: every ticket worktree with its PR, checks and next step, the validate run, and guard rails that enforce the hub's steering"
     }
   ]
 }

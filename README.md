@@ -8,8 +8,9 @@ My [Claude Code mods](https://code.claude.com/docs/en/plugins/mods/overview.md),
 | [plan-progress](plan-progress) | Reads a phased plan into a live progress tree: phases, steps, elapsed time and an estimate of what is left |
 | [test-user](test-user) | A Haiku test user that clicks through your locally running app and reports UI/UX issues: its task list, findings and failures in a live pane |
 | [change-card](change-card) | A short card explaining what an agent changed on this branch: a headline, a few one-line changes, where to look first and what was not checked |
+| [control-tower](control-tower) | A board for a sentinel-hill hub: every ticket worktree with its PR, checks and next step, the validate run above the prompt, and guard rails that enforce the hub's steering |
 
-All four mods share one look: dark violet cards with a lilac accent. In the desktop app's Code tab they draw as images (cards, tiles, gradients); in the terminal they use the same colours as text.
+The first four mods share one look: dark violet cards with a lilac accent. In the desktop app's Code tab they draw as images (cards, tiles, gradients); in the terminal they use the same colours as text. control-tower has its own, dark only: near-black cards, dot-matrix headings and one orange accent.
 
 ![usage-band in the desktop app](docs/usage-band.png)
 
@@ -84,6 +85,25 @@ Claude gets the same reporting tools (`test_plan`, `test_task`, `test_finding`, 
 When the code moves on after the card was written, the pane says which files and `/changes` asks Claude to update just what they affect. After a turn that leaves a sizeable diff (over 5 files or 200 lines) a toast suggests `/changes`, once per card; nothing is written unasked.
 
 `/changes <worktree or branch>` explains that one instead of the session's own checkout: a worktree by its path, folder name, branch or any unique part of those (`/changes PLAT-421`), or a local branch at its tip. When the session's checkout has nothing changed (say, `main` with the work in `.claude/worktrees/`), `/changes` lists the worktrees that do. `/changes <ref>` compares against another ref; `/changes clear` forgets the card.
+
+## control-tower
+
+For a sentinel-hill hub: a repo you run agents from, with a `repos.yaml` registry, `scripts/worktree.sh` and one worktree per ticket under `work/<repo>/<KEY>-<slug>`. The mod does nothing in any other folder.
+
+The pane opens when a session starts in the hub (or with `/tower`). It reads every worktree under `work/` from disk and asks `gh` about its PR: one card per ticket, those that need you first, each with a big dot-matrix number (unresolved review threads, checks passed, commits ahead, time since merge) beside a five-stop track (start, build, PR, feedback, close). Under each card are buttons for the next step: Review and Finish while you build, Handle feedback when a PR has unresolved threads, Fix checks when they fail, Close task once it is merged. They run the hub's own skills (`/review`, `/task-finish`, `/handle-pr-feedback`, `/task-close`). A field at the bottom starts a ticket with `/task-start` or `/implement-ticket`. The board syncs every 3 minutes and after a push or `gh pr create`; a toast says when a PR gets new review threads or is merged.
+
+Above the prompt, a band shows the repo's `validate` commands from `repos.yaml` as Claude runs them (done out of total, one bar per command, what is running or failed), or says when the hub is not set up (`repos.local.yaml` missing, or a `gh` token without `read:packages`) with a button that walks you through it. The status line names the ticket Claude is working in: `● OPS-123 · platform-apps · base develop · unattended`.
+
+Guard rails refuse tool calls that break the hub's steering, with the reason as the tool result so Claude fixes the call and carries on:
+
+- `git add -A`, `.`, `-u` and the like: add files by name
+- a commit message that does not match the repo's `commit_format` with the branch's key, or that carries a Co-Authored-By or "Generated with" line
+- `git merge`
+- `gh pr create` from a ticket worktree without `--draft`, or without the label and assignee the repo's `pr_labels` and `pr_assignee` ask for
+- writing into a clone listed in `repos.local.yaml` (the worktree is the place), or into `/tmp` (use `work/scratch/`)
+- a Jira key in code or comments inside a worktree (prose files are fine)
+
+The Unattended and Interactive buttons set the hub's mode: in interactive mode each prompt reminds Claude to stop for approval after the plan. `/tower refresh` syncs now; `/tower interactive` and `/tower unattended` set the mode.
 
 ## Adding a mod
 

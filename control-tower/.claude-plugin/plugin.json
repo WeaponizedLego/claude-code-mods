@@ -1,0 +1,9 @@
+{
+  "name": "control-tower",
+  "version": "0.1.0",
+  "description": "A board for a sentinel-hill hub: every ticket worktree with its PR, checks and next step, the validate run, and guard rails that enforce the hub's steering",
+  "author": {
+    "name": "WeaponizedLego"
+  },
+  "types": "./types/index.d.ts"
+}
