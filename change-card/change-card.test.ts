@@ -74,7 +74,7 @@ test('the card is refused until it is short and covers every changed file, then 
 
   const term = await $.ui.mount({ plugin: 'change-card', surface: 'terminal', ...pane() })
   expect(await term.find({ type: 'Text', text: 'Move auth from bearer tokens to server sessions' })).toBeDefined()
-  expect((await term.find({ type: 'Text', text: '[+] ' }))?.props.color).toBe(LOOK.accent)
+  expect((await term.find({ type: 'Text', text: '[+] ' }))?.props.color).toBe(LOOK.text)
   expect(await term.find({ type: 'Text', text: ' 3 files' })).toBeDefined()
   expect(await term.find({ type: 'Text', text: '  …/store/sessionTable.ts:40' })).toBeDefined()
   expect(await term.find({ type: 'Text', text: '  • load under many concurrent logins' })).toBeDefined()
@@ -113,7 +113,7 @@ test('/changes asks for a card, says when it is current, and asks for an update 
   expect(w.prompts[1]).toContain('The card now:')
 
   const term = await $.ui.mount({ plugin: 'change-card', surface: 'terminal', ...pane() })
-  expect((await term.find({ type: 'Text', text: '1 file changed since this card' }))?.props.color).toBe(LOOK.warn)
+  expect((await term.find({ type: 'Text', text: '1 file changed since this card' }))?.props.color).toBe(LOOK.accent)
   await term.unmount()
 
   expect((await $.command.run({ command: 'changes', args: 'nope' } as never)).text).toBe('No worktree, branch or commit here matches "nope".')

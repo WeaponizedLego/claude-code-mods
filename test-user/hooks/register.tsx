@@ -424,7 +424,7 @@ export const register: Register = on => {
     const run = runs[0]
     if (!run) {
       return (
-        <Box flexDirection="column" borderStyle="round" borderColor={C.stroke} paddingX={1}>
+        <Box flexDirection="column" borderStyle="round" borderColor={C.edge} paddingX={1}>
           <Text bold color={C.text}>
             No test run yet
           </Text>
@@ -448,7 +448,7 @@ export const register: Register = on => {
         <Box flexDirection="row">
           <Text bold color={C.text}>{`${s.passed}/${s.total || '–'}`}</Text>
           <Text color={C.muted}>{` passed · ${s.failed} failed · `}</Text>
-          <Text color={s.counts.blocker ? C.hot : s.counts.major ? C.warn : C.accent}>{plural(run.findings.length, 'finding')}</Text>
+          <Text color={s.counts.blocker ? C.hot : s.counts.major ? C.warn : C.text}>{plural(run.findings.length, 'finding')}</Text>
           <Text color={C.muted}>{` · ${duration(s.elapsedMs)} · ${run.tester}`}</Text>
         </Box>
 
@@ -464,7 +464,7 @@ export const register: Register = on => {
         )}
 
         <Text> </Text>
-        <Box flexDirection="column" borderStyle="round" borderColor={run.status === 'running' ? C.deep : C.stroke} paddingX={1} key="tasks">
+        <Box flexDirection="column" borderStyle="round" borderColor={run.status === 'running' ? C.accent : C.edge} paddingX={1} key="tasks">
           <Box flexDirection="row" justifyContent="space-between">
             <Text bold color={C.text}>
               Tasks
@@ -501,7 +501,7 @@ export const register: Register = on => {
         </Box>
 
         {bySeverity(run.findings).map((f, i) => (
-          <Box flexDirection="column" borderStyle="round" borderColor={SEVERITY_COLOR[f.severity]} paddingX={1} key={`finding-${i}`}>
+          <Box flexDirection="column" borderStyle="round" borderColor={f.severity === 'blocker' ? C.hot : C.edge} paddingX={1} key={`finding-${i}`}>
             <Box flexDirection="row" justifyContent="space-between">
               <Text bold color={C.text} wrap="truncate">
                 {f.title}

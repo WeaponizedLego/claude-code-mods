@@ -10,7 +10,7 @@ My [Claude Code mods](https://code.claude.com/docs/en/plugins/mods/overview.md),
 | [change-card](change-card) | A short card explaining what an agent changed on this branch: a headline, a few one-line changes, where to look first and what was not checked |
 | [control-tower](control-tower) | A board for a sentinel-hill hub: every ticket worktree with its PR, checks and next step, the validate run above the prompt, and guard rails that enforce the hub's steering |
 
-The first four mods share one look: dark violet cards with a lilac accent. In the desktop app's Code tab they draw as images (cards, tiles, gradients); in the terminal they use the same colours as text. control-tower has its own, dark only: near-black cards, dot-matrix headings and one orange accent.
+All five mods share one look, dark only: near-black cards, monospace labels, dot-matrix headings and big numbers, and one orange accent for what needs a look (done is ivory). In the desktop app's Code tab they draw as images; in the terminal they use the same colours as text.
 
 ![usage-band in the desktop app](docs/usage-band.png)
 

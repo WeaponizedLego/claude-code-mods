@@ -9,7 +9,7 @@ const tokens = atom({ plugin: 'usage-band', key: 'tokens' } as const, { input: 0
 
 const ZERO: Tokens = { input: 0, output: 0, cacheRead: 0 }
 const BAR_CELLS = 10
-// Rounded cells, as the desktop's pills: the filled part in the level colour.
+// Rounded cells, as the desktop's pills: the filled part in the level colour, the rest dim.
 const FILLED = '▰'
 const TRACK = '▱'
 // Roughly one cell of the desktop's code font, in CSS pixels.
@@ -45,7 +45,7 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
       runs: [
         { text: 'context ', color: C.muted },
         { text: FILLED.repeat(filled), color: level(percent) },
-        { text: TRACK.repeat(BAR_CELLS - filled), color: C.track },
+        { text: TRACK.repeat(BAR_CELLS - filled), color: C.dim },
         { text: ` ${percent}%`, color: level(percent), bold: true },
       ],
     })
@@ -62,9 +62,9 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
     out.push({
       priority: 2,
       runs: [
-        { text: '↑', color: C.glow },
+        { text: '↑', color: C.muted },
         { text: `${compact(used.input)} `, color: C.soft },
-        { text: '↓', color: C.accent },
+        { text: '↓', color: C.muted },
         { text: compact(used.output), color: C.text, bold: true },
       ],
     })
@@ -87,7 +87,7 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
 }
 
 const SEPARATOR: Run = { text: ' · ', color: C.dim }
-const MARK: Run = { text: '✻ ', color: C.accent }
+const MARK: Run = { text: '✻ ', color: C.muted }
 
 // Drops the least important segments until the row fits, keeping the order.
 function fit(all: Segment[], columns: number): Run[] {
