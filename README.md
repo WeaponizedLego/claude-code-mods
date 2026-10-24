@@ -10,7 +10,7 @@ My [Claude Code mods](https://code.claude.com/docs/en/plugins/mods/overview.md),
 | [change-card](change-card) | A short card explaining what an agent changed on this branch: a headline, a few one-line changes, where to look first and what was not checked |
 | [control-tower](control-tower) | A board for a sentinel-hill hub: every ticket worktree with its PR, checks and next step, the validate run above the prompt, and guard rails that enforce the hub's steering |
 
-All five mods share one look, dark only: near-black cards, monospace labels, dot-matrix headings and big numbers, and one orange accent for what needs a look (done is ivory). In the desktop app's Code tab they draw as images; in the terminal they use the same colours as text.
+All five mods share one look, dark only: square slate panels on a navy ground, hairline rules, small spaced capitals for labels, light wide numerals, arc gauges and square-ended segment tracks. Amber marks what needs a look or is under way, periwinkle what is done, red what failed. In the desktop app's Code tab they draw as images, in Barlow where it is installed and the system sans otherwise; in the terminal they use the same colours as text.
 
 ![usage-band in the desktop app](docs/usage-band.png)
 
@@ -41,7 +41,7 @@ When a plan with several phases is approved in plan mode, the mod reads its phas
 
 ```
 Move auth to sessions                         20m in · ~40m left
-▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱ 33%  2/6 steps · phase 2/3
+━━━━━━━━━━━━━━━━━━ 33%  2/6 steps · phase 2/3
 
 ✓ 1 Setup                                                 20m
   ├ ✓ Add the sessions table                              10m
@@ -88,11 +88,15 @@ When the code moves on after the card was written, the pane says which files and
 
 ## control-tower
 
+![control-tower in the desktop app](docs/control-tower.png)
+
 For a sentinel-hill hub: a repo you run agents from, with a `repos.yaml` registry, `scripts/worktree.sh` and one worktree per ticket under `work/<repo>/<KEY>-<slug>`. The mod does nothing in any other folder.
 
-The pane opens when a session starts in the hub (or with `/tower`). It reads every worktree under `work/` from disk and asks `gh` about its PR: one card per ticket, those that need you first, each with a big dot-matrix number (unresolved review threads, checks passed, commits ahead, time since merge) beside a five-stop track (start, build, PR, feedback, close). Under each card are buttons for the next step: Review and Finish while you build, Handle feedback when a PR has unresolved threads, Fix checks when they fail, Close task once it is merged. They run the hub's own skills (`/review`, `/task-finish`, `/handle-pr-feedback`, `/task-close`). A field at the bottom starts a ticket with `/task-start` or `/implement-ticket`. The board syncs every 3 minutes and after a push or `gh pr create`; a toast says when a PR gets new review threads or is merged.
+The pane opens when a session starts in the hub (or with `/tower`). It reads every worktree under `work/` from disk and asks `gh` about its PR: one card per ticket, those that need you first, each with a big number (unresolved review threads, checks passed, commits ahead, time since merge) beside a five-stop track (start, build, PR, feedback, close). Under each card are buttons for the next step: Review and Finish while you build, Handle feedback when a PR has unresolved threads, Fix checks when they fail, Close task once it is merged. They run the hub's own skills (`/review`, `/task-finish`, `/handle-pr-feedback`, `/task-close`). A field at the bottom starts a ticket with `/task-start` or `/implement-ticket`. The board syncs every 3 minutes and after a push or `gh pr create`; a toast says when a PR gets new review threads or is merged.
 
 Above the prompt, a band shows the repo's `validate` commands from `repos.yaml` as Claude runs them (done out of total, one bar per command, what is running or failed), or says when the hub is not set up (`repos.local.yaml` missing, or a `gh` token without `read:packages`) with a button that walks you through it. The status line names the ticket Claude is working in: `● OPS-123 · platform-apps · base develop · unattended`.
+
+![control-tower's validate band](docs/control-tower-band.png)
 
 Guard rails refuse tool calls that break the hub's steering, with the reason as the tool result so Claude fixes the call and carries on:
 
