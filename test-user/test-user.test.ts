@@ -58,7 +58,7 @@ test('a tester run fills its tasks and findings and ends with the verdict', asyn
       expect(svg).toContain('Checkout · localhost:5173')
       expect(svg).toContain('Quantity resets on blur')
       expect(svg).toContain('MAJOR')
-      expect(svg).toContain('1 MAJOR')
+      expect(svg).toContain('1 FINDING')
       expect((await ui.find({ type: 'Svg' }))?.props.alt).toContain('1 of 3 tasks passed, 1 failed, 1 finding')
     }
     await ui.unmount()
@@ -157,7 +157,7 @@ test('a blocked run shows why, and Claude can record a run of its own', async ($
 
   const desk = await $.ui.mount({ plugin: 'test-user', surface: 'desktop', ...pane(60) })
   const svg = String((await desk.find({ type: 'Svg' }))?.props.source)
-  expect(svg).toContain('BY CLAUDE')
+  expect(svg).toContain('by Claude')
   expect(svg).toContain('Earlier: Test the application')
   await desk.unmount()
 })
