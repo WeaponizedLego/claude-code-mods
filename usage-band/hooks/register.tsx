@@ -2,16 +2,16 @@ import { atom, read, update } from 'claude-code'
 import type { Color, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
 import type { Snapshot, Tokens } from '../types'
-import { C, LIMIT_NAMES, TILE_H, bandSvg, compact, dollars, level } from './look'
+import { C, LIMIT_NAMES, TILE_H, bandSvg, compact, dollars, fill, level } from './look'
 
 const snapshot = atom({ plugin: 'usage-band', key: 'snapshot' } as const, null)
 const tokens = atom({ plugin: 'usage-band', key: 'tokens' } as const, { input: 0, output: 0, cacheRead: 0 })
 
 const ZERO: Tokens = { input: 0, output: 0, cacheRead: 0 }
 const BAR_CELLS = 10
-// Rounded cells, as the desktop's pills: the filled part in the level colour, the rest dim.
-const FILLED = '▰'
-const TRACK = '▱'
+// A hairline bar, as the desktop's gauges: the filled part in the gauge colour, the rest on the track.
+const FILLED = '━'
+const TRACK = '━'
 // Roughly one cell of the desktop's code font, in CSS pixels.
 const CELL_PX = 8
 
@@ -37,15 +37,15 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
 
   const percent = snap?.percent
   if (percent == null) {
-    out.push({ priority: 0, runs: [{ text: 'context ', color: C.muted }, { text: 'waiting for first reply', color: C.dim }] })
+    out.push({ priority: 0, runs: [{ text: 'context ', color: C.muted }, { text: 'waiting for first reply', color: C.muted }] })
   } else {
     const filled = Math.min(BAR_CELLS, Math.round(percent / (100 / BAR_CELLS)))
     out.push({
       priority: 0,
       runs: [
         { text: 'context ', color: C.muted },
-        { text: FILLED.repeat(filled), color: level(percent) },
-        { text: TRACK.repeat(BAR_CELLS - filled), color: C.dim },
+        { text: FILLED.repeat(filled), color: fill(percent) },
+        { text: TRACK.repeat(BAR_CELLS - filled), color: C.edge },
         { text: ` ${percent}%`, color: level(percent), bold: true },
       ],
     })
@@ -63,13 +63,13 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
       priority: 2,
       runs: [
         { text: '↑', color: C.muted },
-        { text: `${compact(used.input)} `, color: C.soft },
+        { text: `${compact(used.input)} `, color: C.done },
         { text: '↓', color: C.muted },
         { text: compact(used.output), color: C.text, bold: true },
       ],
     })
     if (used.cacheRead > 0) {
-      out.push({ priority: 5, runs: [{ text: `cached ${compact(used.cacheRead)}`, color: C.dim }] })
+      out.push({ priority: 5, runs: [{ text: `cached ${compact(used.cacheRead)}`, color: C.muted }] })
     }
   }
 
@@ -86,7 +86,7 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
   return out
 }
 
-const SEPARATOR: Run = { text: ' · ', color: C.dim }
+const SEPARATOR: Run = { text: ' / ', color: C.edge }
 const MARK: Run = { text: '✻ ', color: C.muted }
 
 // Drops the least important segments until the row fits, keeping the order.

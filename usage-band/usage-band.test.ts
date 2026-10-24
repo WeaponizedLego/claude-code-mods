@@ -30,22 +30,23 @@ test('the band shows context, cost, tokens and limits in the palette', async ($,
   expect((await term.find({ type: 'Text', text: /^ \d+%$/ }))?.props.color).toBe(C.text)
   expect((await term.find({ type: 'Text', text: /^\$/ }))?.text).toBe('$1.27')
   expect((await term.find({ type: 'Text', text: '4.1k' }))?.text).toBe('4.1k')
-  expect((await term.find({ type: 'Text', text: '91%' }))?.props.color).toBe(C.accent)
-  expect((await term.find({ type: 'Text', text: /^▰+$/ }))?.props.color).toBe(C.text)
+  expect((await term.find({ type: 'Text', text: '91%' }))?.props.color).toBe(C.hot)
+  expect((await term.find({ type: 'Text', text: /^━+$/ }))?.props.color).toBe(C.done)
   await term.unmount()
 
-  // The desktop draws a strip of stat tiles, one image: dot-matrix values in monospace.
+  // The desktop draws a strip of stat tiles, one image: arc gauges and light numerals in a sans.
   const desk = await $.ui.mount({ plugin: 'usage-band', surface: 'desktop', ...band(140) })
   const svg = await desk.find({ type: 'Svg' })
   const source = String(svg?.props.source)
   const alt = String(svg?.props.alt)
-  expect(source).toContain('SF Mono')
-  expect(source).toContain('>CONTEXT<')
-  expect(source).toContain(`<g fill="${C.text}"><circle`)
-  expect(source).toContain('2.0K IN')
-  // The limit past 80% is drawn in the accent and its tile gets the orange stroke.
-  expect(source).toContain(`<g fill="${C.accent}"><circle`)
-  expect(source).toContain(`rx="16" fill="${C.card}" stroke="${C.accent}"`)
+  expect(source).toContain('Barlow')
+  expect(source).toContain('>CONTEXT %<')
+  expect(source).toContain(`stroke="${C.done}" stroke-width="3"`)
+  expect(source).toContain('2.0k in')
+  // The limit past 90% is drawn in red and its tile gets the red stroke; tiles are square.
+  expect(source).toContain(`stroke="${C.hot}" stroke-width="3"`)
+  expect(source).toContain(`fill="${C.card}" stroke="${C.hot}"`)
+  expect(source).not.toContain('rx=')
   expect(source).not.toMatch(/Gradient|url\(#/)
   expect(alt).toContain('Context 48% 96k / 200k')
   expect(alt).toContain('Cost $1.27')
@@ -55,7 +56,7 @@ test('the band shows context, cost, tokens and limits in the palette', async ($,
   await desk.unmount()
 })
 
-test('the context turns amber from 70% and orange past 80%', async ($, on) => {
+test('the context turns amber from 70% and red past 90%', async ($, on) => {
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   const colourAt = async (percent: number) => {
     await $.session.measure({ context: { tokens: percent * 2000, window: 200_000, percent }, rateLimits: [], changed: ['context'] })
@@ -66,9 +67,9 @@ test('the context turns amber from 70% and orange past 80%', async ($, on) => {
   }
 
   expect(await colourAt(69)).toBe(C.text)
-  expect(await colourAt(70)).toBe(C.warn)
-  expect(await colourAt(80)).toBe(C.warn)
-  expect(await colourAt(81)).toBe(C.accent)
+  expect(await colourAt(70)).toBe(C.accent)
+  expect(await colourAt(90)).toBe(C.accent)
+  expect(await colourAt(91)).toBe(C.hot)
 })
 
 test('a narrow band keeps the context bar and the cost', async ($, on) => {
@@ -88,9 +89,9 @@ test('a narrow band keeps the context bar and the cost', async ($, on) => {
   await ui.unmount()
 
   // A narrow desktop band keeps the context and cost tiles and drops the limit.
-  const desk = await $.ui.mount({ plugin: 'usage-band', surface: 'desktop', ...band(32) })
+  const desk = await $.ui.mount({ plugin: 'usage-band', surface: 'desktop', ...band(40) })
   const source = String((await desk.find({ type: 'Svg' }))?.props.source)
-  expect(source).toContain('>CONTEXT<')
+  expect(source).toContain('>CONTEXT %<')
   expect(source).toContain('>COST<')
   expect(source).not.toContain('7D LIMIT')
 })

@@ -1,24 +1,26 @@
 import type { Snapshot, Tokens } from '../types'
 
-// Dark only: near-black cards on a warm black. Ivory while there is room, a warm
-// amber from 70%, the one orange past 80%. An SVG is drawn as an image, so it
-// takes real colours, not theme keys; the terminal uses the same.
+// Dark only: slate panels on a navy ground, hairline rules, light wide numerals.
+// Periwinkle while there is room, amber from 70%, red past 90%. An SVG is drawn
+// as an image, so it takes real colours, not theme keys; the terminal uses the same.
 export const C = {
-  ground: '#121211',
-  card: '#1a1a19',
-  stroke: '#262523',
-  edge: '#3a3936',
-  text: '#eceae6',
-  soft: '#c9c6c0',
-  muted: '#9a9690',
-  dim: '#5c5955',
-  warn: '#f2a65a',
-  accent: '#fc5220',
-  ember: '#3a1a10',
+  ground: '#1f2433',
+  card: '#282e40',
+  stroke: '#353c50',
+  edge: '#4a5168',
+  text: '#e8eaf0',
+  soft: '#c4c8d4',
+  muted: '#9aa1b5',
+  dim: '#6b7287',
+  accent: '#f5a524',
+  done: '#8b90d6',
+  hot: '#f0605d',
 } as const
 
-// Ivory while there is room, amber from 70%, orange past 80%.
-export const level = (percent: number): string => (percent > 80 ? C.accent : percent >= 70 ? C.warn : C.text)
+// Ivory while there is room, amber from 70%, red past 90%.
+export const level = (percent: number): string => (percent > 90 ? C.hot : percent >= 70 ? C.accent : C.text)
+// A gauge or bar is periwinkle while there is room, then takes the level colour.
+export const fill = (percent: number): string => (percent >= 70 ? level(percent) : C.done)
 
 export const compact = (n: number): string => {
   if (n < 1000) return `${n}`
@@ -30,83 +32,32 @@ export const dollars = (usd: number): string => `$${usd < 10 ? usd.toFixed(2) : 
 
 export const LIMIT_NAMES: Record<string, string> = { five_hour: '5h', seven_day: '7d', spend_limit: 'spend' }
 
-const MONO = `font-family="'SF Mono', 'JetBrains Mono', Menlo, ui-monospace, monospace"`
+export const SANS = `font-family="Barlow, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"`
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-// Text in an image cannot truncate itself: cut it to an estimated monospace width.
-const fit = (t: string, px: number, size: number, spacing = 0) => {
-  const max = Math.max(3, Math.floor(px / (size * 0.6 + spacing)))
+// Text in an image cannot truncate itself: cut it to an estimated width. Labels
+// are capitals, wider than the average letter.
+const LABEL_CH = 10 * 0.68 + 1.2
+const fit = (t: string, px: number, ch: number) => {
+  const max = Math.max(3, Math.floor(px / ch))
   return t.length > max ? `${t.slice(0, max - 1)}…` : t
 }
 const label = (x: number, y: number, fill: string, body: string, px: number) =>
-  `<text x="${x.toFixed(1)}" y="${y}" font-size="10" fill="${fill}" letter-spacing="0.8">${esc(fit(body.toUpperCase(), px, 10, 0.8))}</text>`
+  `<text x="${x.toFixed(1)}" y="${y}" font-size="10" fill="${fill}" letter-spacing="1.2">${esc(fit(body.toUpperCase(), px, LABEL_CH))}</text>`
+/** Estimated width of light numerals at a size. */
+const numeralsWidth = (t: string, size: number) => t.length * size * 0.5
 
-// A 5×7 dot-matrix face for the big numbers, drawn as circles.
-const GLYPHS: Record<string, string> = {
-  A: '.###. #...# #...# ##### #...# #...# #...#',
-  B: '####. #...# #...# ####. #...# #...# ####.',
-  C: '.###. #...# #.... #.... #.... #...# .###.',
-  D: '####. #...# #...# #...# #...# #...# ####.',
-  E: '##### #.... #.... ####. #.... #.... #####',
-  F: '##### #.... #.... ####. #.... #.... #....',
-  G: '.###. #...# #.... #.### #...# #...# .####',
-  H: '#...# #...# #...# ##### #...# #...# #...#',
-  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
-  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
-  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
-  L: '#.... #.... #.... #.... #.... #.... #####',
-  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
-  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
-  O: '.###. #...# #...# #...# #...# #...# .###.',
-  P: '####. #...# #...# ####. #.... #.... #....',
-  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
-  R: '####. #...# #...# ####. #.#.. #..#. #...#',
-  S: '.#### #.... #.... .###. ....# ....# ####.',
-  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
-  U: '#...# #...# #...# #...# #...# #...# .###.',
-  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
-  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
-  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
-  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
-  Z: '##### ....# ...#. ..#.. .#... #.... #####',
-  '0': '.###. #...# #..## #.#.# ##..# #...# .###.',
-  '1': '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
-  '2': '.###. #...# ....# ...#. ..#.. .#... #####',
-  '3': '##### ...#. ..#.. ...#. ....# #...# .###.',
-  '4': '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
-  '5': '##### #.... ####. ....# ....# #...# .###.',
-  '6': '..##. .#... #.... ####. #...# #...# .###.',
-  '7': '##### ....# ...#. ..#.. .#... .#... .#...',
-  '8': '.###. #...# #...# .###. #...# #...# .###.',
-  '9': '.###. #...# #...# .#### ....# ...#. .##..',
-  '/': '....# ....# ...#. ..#.. .#... #.... #....',
-  '-': '..... ..... ..... .###. ..... ..... .....',
-  '.': '..... ..... ..... ..... ..... .##.. .##..',
-  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
-  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
-  '%': '##..# ##..# ...#. ..#.. .#... #..## #..##',
-  $: '..#.. .#### #.#.. .###. ..#.# ####. ..#..',
-}
-
-/** Width of a dot-matrix string at a pitch (the distance between dot centres). */
-export const dotsWidth = (s: string, pitch: number) => Math.max(0, s.length * 6 * pitch - pitch)
-
-/** A dot-matrix string with its top-left at (x, y): 7 dots tall. */
-export function dots(s: string, x: number, y: number, pitch: number, fill: string): string {
-  const r = (pitch * 0.4).toFixed(2)
-  const out: string[] = []
-  ;[...s.toUpperCase()].forEach((ch, c) => {
-    const rows = (GLYPHS[ch] ?? '').split(' ')
-    rows.forEach((row, ry) => {
-      ;[...row].forEach((bit, rx) => {
-        if (bit !== '#') return
-        const cx = x + (c * 6 + rx) * pitch + pitch / 2
-        const cy = y + ry * pitch + pitch / 2
-        out.push(`<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r}"/>`)
-      })
-    })
-  })
-  return `<g fill="${fill}">${out.join('')}</g>`
+/** An open arc gauge, the gap at the bottom, with the number in the middle. */
+function gauge(cx: number, cy: number, r: number, percent: number, color: string, value: string): string {
+  const circ = 2 * Math.PI * r
+  const arc = circ * 0.8
+  const turn = `transform="rotate(126 ${cx} ${cy})"`
+  const p = Math.max(0, Math.min(100, percent))
+  return (
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${C.edge}" stroke-width="3" stroke-dasharray="${arc.toFixed(1)} ${circ.toFixed(1)}" ${turn}/>` +
+    (p > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="${((arc * p) / 100).toFixed(1)} ${circ.toFixed(1)}" ${turn}/>` : '') +
+    `<text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="${value.length > 3 ? 12 : 15}" font-weight="300" letter-spacing="0.5" fill="${C.text}">${esc(value)}</text>`
+  )
 }
 
 type Tile = {
@@ -117,25 +68,23 @@ type Tile = {
   isHot?: boolean
   aside?: string
   sub?: { lead?: string; rest?: string }
-  pills?: { filled: number; color: string }
+  gauge?: { percent: number; color: string }
 }
-
-const PILLS = 10
 
 function tiles(snap: Snapshot | null, used: Tokens): Tile[] {
   const out: Tile[] = []
   const percent = snap?.percent
   out.push(
     percent == null
-      ? { priority: 0, label: 'Context', value: '--', valueColor: C.dim, sub: { rest: 'waiting for first reply' } }
+      ? { priority: 0, label: 'Context', value: '--', valueColor: C.muted, sub: { rest: 'waiting for first reply' } }
       : {
           priority: 0,
           label: 'Context',
           value: `${percent}%`,
           valueColor: level(percent),
-          isHot: percent > 80,
+          isHot: percent >= 70,
           aside: snap?.contextTokens != null ? `${compact(snap.contextTokens)} / ${compact(snap.window)}` : undefined,
-          pills: { filled: Math.min(PILLS, Math.round(percent / (100 / PILLS))), color: level(percent) },
+          gauge: { percent, color: fill(percent) },
         },
   )
   if (snap?.costUsd != null) {
@@ -148,7 +97,7 @@ function tiles(snap: Snapshot | null, used: Tokens): Tile[] {
       value: compact(used.output),
       valueColor: C.text,
       aside: 'out',
-      sub: { lead: `${compact(used.input)} in`, rest: used.cacheRead > 0 ? ` · ${compact(used.cacheRead)} cached` : '' },
+      sub: { lead: `${compact(used.input)} in`, rest: used.cacheRead > 0 ? ` / ${compact(used.cacheRead)} cached` : '' },
     })
   }
   for (const limit of snap?.limits ?? []) {
@@ -158,18 +107,19 @@ function tiles(snap: Snapshot | null, used: Tokens): Tile[] {
       label: `${LIMIT_NAMES[limit.kind] ?? limit.kind} limit`,
       value: `${p}%`,
       valueColor: level(p),
-      isHot: p > 80,
-      pills: { filled: Math.min(PILLS, Math.round(p / (100 / PILLS))), color: level(p) },
+      isHot: p >= 70,
+      gauge: { percent: p, color: fill(p) },
     })
   }
   return out
 }
 
-export const TILE_H = 60
-const MIN_W = 118
-const MAX_W = 200
+export const TILE_H = 64
+const MIN_W = 150
+const MAX_W = 220
 const GAP = 8
 const PAD = 14
+const R = 22
 
 /** The band as one strip of stat tiles, the least important dropped to fit. */
 export function bandSvg(snap: Snapshot | null, used: Tokens, width: number): { source: string; width: number; alt: string } {
@@ -189,42 +139,40 @@ export function bandSvg(snap: Snapshot | null, used: Tokens, width: number): { s
     const x = i * (tileW + GAP)
     const lx = x + PAD
     const g: string[] = []
-    g.push(`<rect x="${(x + 0.5).toFixed(1)}" y="0.5" width="${(tileW - 1).toFixed(1)}" height="${TILE_H - 1}" rx="16" fill="${C.card}" stroke="${t.isHot ? C.accent : C.stroke}"/>`)
-    g.push(label(lx, 17, C.muted, t.label, inner))
+    g.push(`<rect x="${(x + 0.5).toFixed(1)}" y="0.5" width="${(tileW - 1).toFixed(1)}" height="${TILE_H - 1}" fill="${C.card}" stroke="${t.isHot ? t.valueColor : C.stroke}"/>`)
 
-    // The tile's value in the dot-matrix face, shrunk if a long one would overflow.
-    const pitch = Math.min(2.4, inner / Math.max(1, t.value.length * 6 - 1))
-    g.push(dots(t.value, lx, 23, pitch, t.valueColor))
-    if (t.aside) {
-      const ax = lx + dotsWidth(t.value, pitch) + 7
-      const room = x + tileW - PAD - ax
-      // The aside shows whole or not at all.
-      if (t.aside.length * 6.8 <= room) g.push(label(ax, 39, C.muted, t.aside, room))
+    if (t.gauge) {
+      // A gauge at the left, its label and the aside beside it.
+      g.push(gauge(lx + R, TILE_H / 2, R, t.gauge.percent, t.gauge.color, t.value.replace('%', '')))
+      const tx = lx + 2 * R + 12
+      const room = x + tileW - PAD - tx
+      g.push(label(tx, 28, C.muted, `${t.label} %`, room))
+      if (t.aside) g.push(`<text x="${tx.toFixed(1)}" y="46" font-size="13" fill="${C.soft}">${esc(fit(t.aside, room, 13 * 0.55))}</text>`)
+      return g.join('')
     }
 
-    if (t.pills) {
-      // Filled cells in the level colour, the rest hollow.
-      const pw = (inner - (PILLS - 1) * 3) / PILLS
-      for (let k = 0; k < PILLS; k++) {
-        const px = (lx + k * (pw + 3)).toFixed(1)
-        g.push(
-          k < t.pills.filled
-            ? `<rect x="${px}" y="46" width="${pw.toFixed(1)}" height="6" rx="3" fill="${t.pills.color}"/>`
-            : `<rect x="${px}" y="46.5" width="${(pw - 1).toFixed(1)}" height="5" rx="2.5" fill="none" stroke="${C.dim}"/>`,
-        )
-      }
-    } else if (t.sub) {
-      const lead = (t.sub.lead ?? '').toUpperCase()
-      const whole = fit(lead + (t.sub.rest ?? '').toUpperCase(), inner, 10, 0.8)
+    // A marker and the label, then the value in light numerals, the sub line under.
+    g.push(`<rect x="${lx}" y="9" width="2" height="10" fill="${C.text}"/>`)
+    g.push(label(lx + 8, 18, C.muted, t.label, inner - 8))
+    const size = Math.min(26, inner / Math.max(1, t.value.length * 0.56))
+    g.push(`<text x="${lx}" y="44" font-size="${size.toFixed(1)}" font-weight="300" letter-spacing="1" fill="${t.valueColor}">${esc(t.value)}</text>`)
+    if (t.aside) {
+      const ax = lx + numeralsWidth(t.value, size) + 6
+      // The aside shows whole or not at all.
+      if (t.aside.length * 7 <= x + tileW - PAD - ax) g.push(`<text x="${ax.toFixed(1)}" y="44" font-size="12" fill="${C.muted}">${esc(t.aside)}</text>`)
+    }
+    if (t.sub) {
+      const lead = t.sub.lead ?? ''
+      const whole = fit(lead + (t.sub.rest ?? ''), inner, 11 * 0.55)
       const head = whole.slice(0, lead.length)
       const tail = whole.slice(lead.length)
-      const spans = (head ? `<tspan fill="${C.soft}">${esc(head)}</tspan>` : '') + (tail ? `<tspan fill="${C.muted}">${esc(tail)}</tspan>` : '')
-      g.push(`<text x="${lx}" y="53" font-size="10" letter-spacing="0.8">${spans}</text>`)
+      const spans = (head ? `<tspan fill="${C.done}">${esc(head)}</tspan>` : '') + (tail ? `<tspan fill="${C.muted}">${esc(tail)}</tspan>` : '')
+      g.push(`<text x="${lx}" y="57" font-size="11">${spans}</text>`)
     }
     return g.join('')
   })
 
-  const source = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${TILE_H}" viewBox="0 0 ${W} ${TILE_H}" ${MONO}>${parts.join('')}</svg>`
+  const source = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${TILE_H}" viewBox="0 0 ${W} ${TILE_H}" ${SANS}>${parts.join('')}</svg>`
   const alt = kept.map(t => (t.value === '--' ? `${t.label} ${t.sub?.rest ?? 'not known yet'}` : `${t.label} ${t.value}${t.aside ? ` ${t.aside}` : ''}`)).join(', ')
   return { source, width: W, alt }
 }
