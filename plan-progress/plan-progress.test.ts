@@ -65,13 +65,13 @@ test('an approved plan becomes a tree of phases and steps, the first step curren
   const desk = await $.ui.mount({ plugin: 'plan-progress', surface: 'desktop', ...pane() })
   const svg = String((await desk.find({ type: 'Svg' }))?.props.source)
   expect(svg).toContain('Move auth to sessions')
-  expect(svg).toContain('SWITCH OVER')
-  expect(svg).toContain('PHASE 1/3')
+  expect(svg).toContain('Switch over')
+  expect(svg).toContain('PHASE 1 / 3')
   expect(svg).toContain('Add the sessions table')
   expect(svg).not.toContain('Tokens leak')
-  // The phase under way is outlined in the one accent; its current stop sits on an ember halo.
+  // The phase under way is outlined in the one accent; its current step is an amber square.
   expect(svg).toContain(`stroke="${LOOK.accent}"`)
-  expect(svg).toContain(`fill="${LOOK.ember}"`)
+  expect(svg).toContain(`width="6" height="6" fill="${LOOK.accent}"`)
   expect((await desk.find({ type: 'Svg' }))?.props.alt).toContain('0% done, 0 of 6 steps')
   expect((await desk.find({ type: 'Svg' }))?.props.alt).toContain('Current step: Add the sessions table')
   await desk.unmount()
@@ -102,8 +102,8 @@ test('marking steps moves the tree on and estimates what is left', async ($, on)
   const desk = await $.ui.mount({ plugin: 'plan-progress', surface: 'desktop', ...pane() })
   const svg = String((await desk.find({ type: 'Svg' }))?.props.source)
   expect((await desk.find({ type: 'Svg' }))?.props.alt).toContain('33% done')
-  expect(svg).toContain('~40M LEFT')
-  expect(svg).toContain('2 STEPS DONE')
+  expect(svg).toContain('>~40m<')
+  expect(svg).toContain('2 steps done')
   await desk.unmount()
 
   const wrong = await $.tool.call({ tool: 'mcp__plan-progress__plan_mark', phase: 9, status: 'done' } as never)
@@ -150,7 +150,7 @@ test('a rejected plan draws no tree, and plan_set draws one', async ($, on) => {
   await ui.unmount()
   const desk = await $.ui.mount({ plugin: 'plan-progress', surface: 'desktop', ...pane() })
   expect((await desk.find({ type: 'Svg' }))?.props.alt).toBe('No plan yet')
-  expect(String((await desk.find({ type: 'Svg' }))?.props.source)).toContain('APPROVE A PLAN IN PLAN MODE')
+  expect(String((await desk.find({ type: 'Svg' }))?.props.source)).toContain('Approve a plan in plan mode')
   await desk.unmount()
 
   const set = await $.tool.call({
@@ -171,7 +171,7 @@ test('titles with markup characters are escaped in the image', async ($, on) => 
   const desk = await $.ui.mount({ plugin: 'plan-progress', surface: 'desktop', ...pane() })
   const svg = String((await desk.find({ type: 'Svg' }))?.props.source)
   expect(svg).toContain('A &lt;b&gt; &amp; &quot;c&quot;')
-  expect(svg).toContain('X &lt; Y')
+  expect(svg).toContain('x &lt; y')
   await desk.unmount()
 })
 

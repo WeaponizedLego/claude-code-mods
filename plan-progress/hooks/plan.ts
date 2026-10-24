@@ -260,9 +260,11 @@ export function duration(ms: number): string {
   return `${h}h${String(min % 60).padStart(2, '0')}m`
 }
 
-export function bar(percent: number, cells: number): { filled: string; track: string } {
+// The status line has no colours, so its cells differ in shape; the pane's bar
+// is one line, filled and track told apart by colour.
+export function bar(percent: number, cells: number, on = '▰', off = '▱'): { filled: string; track: string } {
   const filled = Math.min(cells, Math.round((percent / 100) * cells))
-  return { filled: '▰'.repeat(filled), track: '▱'.repeat(cells - filled) }
+  return { filled: on.repeat(filled), track: off.repeat(cells - filled) }
 }
 
 /** One line for the status bar. */

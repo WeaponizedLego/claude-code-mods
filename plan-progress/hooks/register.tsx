@@ -353,9 +353,9 @@ export const register: Register = on => {
     }
 
     const cells = Math.max(6, Math.min(24, e.props.bodyColumns - 36))
-    const { filled, track } = bar(s.percent, cells)
+    const { filled, track } = bar(s.percent, cells, '━', '━')
     const glyph: Record<string, [string, Color]> = {
-      done: ['✓', C.text],
+      done: ['✓', C.done],
       active: ['●', C.accent],
       pending: ['○', C.dim],
       skipped: ['–', C.dim],
@@ -399,8 +399,8 @@ export const register: Register = on => {
           </Box>
         </Box>
         <Box flexDirection="row">
-          <Text color={C.text}>{filled}</Text>
-          <Text color={C.dim}>{track}</Text>
+          <Text color={C.done}>{filled}</Text>
+          <Text color={C.edge}>{track}</Text>
           <Text bold color={C.text}>
             {` ${s.percent}%`}
           </Text>
