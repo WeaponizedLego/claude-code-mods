@@ -433,7 +433,7 @@ export const register: Register = on => {
       <Box flexDirection="row" gap={1}>
         <Text bold color={C.text}>{`validate ${v.checks.filter(c => c.status === 'passed').length}/${v.checks.length}`}</Text>
         {v.checks.map((c, i) => (
-          <Text key={`check-${i}`} color={c.status === 'passed' ? C.text : c.status === 'pending' ? C.dim : C.accent}>
+          <Text key={`check-${i}`} color={c.status === 'passed' ? C.done : c.status === 'pending' ? C.dim : c.status === 'failed' ? C.hot : C.accent}>
             {`${c.status === 'passed' ? '●' : c.status === 'failed' ? '✗' : c.status === 'running' ? '◐' : '○'} ${shortCommand(c.command)}`}
           </Text>
         ))}
