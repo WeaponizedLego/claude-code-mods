@@ -74,7 +74,7 @@ test('the card is refused until it is short and covers every changed file, then 
 
   const term = await $.ui.mount({ plugin: 'change-card', surface: 'terminal', ...pane() })
   expect(await term.find({ type: 'Text', text: 'Move auth from bearer tokens to server sessions' })).toBeDefined()
-  expect((await term.find({ type: 'Text', text: '[+] ' }))?.props.color).toBe(LOOK.text)
+  expect((await term.find({ type: 'Text', text: '[+] ' }))?.props.color).toBe(LOOK.good)
   expect(await term.find({ type: 'Text', text: ' 3 files' })).toBeDefined()
   expect(await term.find({ type: 'Text', text: '  …/store/sessionTable.ts:40' })).toBeDefined()
   expect(await term.find({ type: 'Text', text: '  • load under many concurrent logins' })).toBeDefined()

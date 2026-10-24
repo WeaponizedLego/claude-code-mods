@@ -365,7 +365,7 @@ export const register: Register = on => {
             row,
             <Box flexDirection="row" key={`shift-${i}`}>
               <Text color={C.muted} wrap="truncate">{`    ${c.before ?? '…'}`}</Text>
-              <Text color={C.dim}>{' → '}</Text>
+              <Text color={C.accent}>{' → '}</Text>
               <Text color={C.soft} wrap="truncate">
                 {c.after ?? '…'}
               </Text>
