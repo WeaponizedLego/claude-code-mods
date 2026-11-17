@@ -1,10 +1,11 @@
+import type { RenderElement } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
 import { C } from './hooks/look'
 
 const band = (bodyColumns: number) => ({
   component: 'AbovePrompt' as const,
-  props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns, scroll: { offset: 0, bodyRows: 9 }, view: {} },
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, bodyColumns, scroll: { offset: 0, bodyRows: 9 }, view: {} },
 })
 
 test('the band shows context, cost, tokens and limits in the palette', async ($, on) => {
@@ -102,4 +103,21 @@ test('a band too short for tiles falls back to the text row on the desktop', asy
   const ui = await $.ui.mount({ plugin: 'usage-band', surface: 'desktop', ...band(140), props: { ...band(140).props, maxRows: 1 } })
   expect(await ui.find({ type: 'Svg' })).toBeUndefined()
   expect((await ui.find({ type: 'Text', text: ' 10%' }))?.props.color).toBe(C.text)
+})
+
+test('a band beneath this one draws under the usage row', async ($, on) => {
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  // Stands for branch-band, a mod beneath usage-band.
+  on('ui.render', ($, e) => h($.ui.resolve(e).Text, {}, 'feature/PLAT-1') as RenderElement)
+  await $.session.measure({ context: { tokens: 20_000, window: 200_000, percent: 10 }, rateLimits: [], changed: ['context'] })
+
+  const term = await $.ui.mount({ plugin: 'usage-band', surface: 'terminal', ...band(140) })
+  expect((await term.find({ type: 'Text', text: ' 10%' }))?.text).toBe(' 10%')
+  expect((await term.find({ type: 'Text', text: 'feature/PLAT-1' }))?.text).toBe('feature/PLAT-1')
+  await term.unmount()
+
+  const desk = await $.ui.mount({ plugin: 'usage-band', surface: 'desktop', ...band(140) })
+  expect(await desk.find({ type: 'Svg' })).toBeDefined()
+  expect((await desk.find({ type: 'Text', text: 'feature/PLAT-1' }))?.text).toBe('feature/PLAT-1')
+  await desk.unmount()
 })

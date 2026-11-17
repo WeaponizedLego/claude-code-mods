@@ -148,29 +148,41 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
+    // Bands of mods beneath this one (branch-band, say) draw under it.
+    const beneath = await next(e)
     const snap = await read($, snapshot)
     const used = await read($, tokens)
+    const { Box } = $.ui.resolve(e)
 
     // Where the surface draws images and the band has the rows, a strip of stat tiles.
+    let own
     if (e.surface !== 'terminal' && e.props.maxRows >= 3) {
-      const { Box, Svg } = $.ui.resolve(e)
+      const { Svg } = $.ui.resolve(e)
       const strip = bandSvg(snap, used, e.props.bodyColumns * CELL_PX)
-      return (
+      own = (
         <Box flexDirection="row" key="usage-band">
           <Svg source={strip.source} alt={strip.alt} width={strip.width} height={TILE_H} />
         </Box>
       )
+    } else {
+      const runs = fit(segments(snap, used), e.props.bodyColumns)
+      const { Text } = $.ui.resolve(e)
+      own = (
+        <Box flexDirection="row" alignItems="center" key="usage-band">
+          {runs.map(r => (
+            <Text color={r.color} bold={r.bold}>
+              {r.text}
+            </Text>
+          ))}
+        </Box>
+      )
     }
 
-    const runs = fit(segments(snap, used), e.props.bodyColumns)
-    const { Box, Text } = $.ui.resolve(e)
+    if (!beneath) return own
     return (
-      <Box flexDirection="row" alignItems="center" key="usage-band">
-        {runs.map(r => (
-          <Text color={r.color} bold={r.bold}>
-            {r.text}
-          </Text>
-        ))}
+      <Box flexDirection="column">
+        {own}
+        {beneath}
       </Box>
     )
   })
