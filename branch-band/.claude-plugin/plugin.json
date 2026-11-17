@@ -1,0 +1,9 @@
+{
+  "name": "branch-band",
+  "version": "0.1.0",
+  "description": "A one-line band under usage-band showing the current git branch and the repository's other active worktrees",
+  "author": {
+    "name": "WeaponizedLego"
+  },
+  "types": "./types/index.d.ts"
+}
