@@ -4,14 +4,13 @@ My [Claude Code mods](https://code.claude.com/docs/en/plugins/mods/overview.md),
 
 | Mod | What it does |
 | --- | --- |
-| [usage-band](usage-band) | A band above the prompt showing context fill, tokens, cost and rate limits: stat tiles in the desktop app, a coloured row in the terminal |
-| [branch-band](branch-band) | A one-line band under usage-band: the current git branch and the repository's other active worktrees |
+| [usage-band](usage-band) | A band above the prompt showing context fill, tokens, cost, rate limits and the git branch: stat tiles in the desktop app, a coloured row in the terminal |
 | [plan-progress](plan-progress) | Reads a phased plan into a live progress tree: phases, steps, elapsed time and an estimate of what is left |
 | [test-user](test-user) | A Haiku test user that clicks through your locally running app and reports UI/UX issues: its task list, findings and failures in a live pane |
 | [change-card](change-card) | A short card explaining what an agent changed on this branch: a headline, a few one-line changes, where to look first and what was not checked |
 | [control-tower](control-tower) | A board for a sentinel-hill hub: every ticket worktree with its PR, checks and next step, the validate run above the prompt, and guard rails that enforce the hub's steering |
 
-All six mods share one look, dark only: square slate panels on a navy ground, hairline rules, small spaced capitals for labels, light wide numerals, arc gauges and square-ended segment tracks. Amber marks what needs a look or is under way, periwinkle what is done, red what failed. In the desktop app's Code tab they draw as images, in Barlow where it is installed and the system sans otherwise; in the terminal they use the same colours as text.
+All five mods share one look, dark only: square slate panels on a navy ground, hairline rules, small spaced capitals for labels, light wide numerals, arc gauges and square-ended segment tracks. Amber marks what needs a look or is under way, periwinkle what is done, red what failed. In the desktop app's Code tab they draw as images, in Barlow where it is installed and the system sans otherwise; in the terminal they use the same colours as text.
 
 ![usage-band in the desktop app](docs/usage-band.png)
 
@@ -34,9 +33,9 @@ claude plugin install plan-progress@claude-code-mods
 
 Update later with `claude plugin marketplace update claude-code-mods`, then `claude plugin update usage-band@claude-code-mods`.
 
-## branch-band
+## usage-band: the branch
 
-One line under usage-band: `⎇` and the current branch in bold, then the repository's other worktrees by folder and branch (`2 other worktrees: Sentinel-Hill [main], PLAT-8611 [feature/PLAT-8611]`), cut at the band's edge. A detached HEAD reads `detached @ <sha>`; outside a git repository the line is not drawn. It reads git at session start, after each turn and each Bash call, when the session changes directory or worktree, and every 15 seconds, so a branch switched in another terminal shows up too. Installed with usage-band it sits under it; on its own it is the band.
+Under its stat tiles, usage-band draws a slim Branch panel: the current branch, then how many other worktrees the repository has and their folder names, cut to the strip's width (`detached @ <sha>` on a detached HEAD). In the terminal it is the last segment of the row, `⎇ <branch> +N worktrees`, the first dropped when the row runs out of room. Outside a git repository neither is drawn. It reads git at session start, after each turn and each Bash call, when the session changes directory or worktree, and every 15 seconds, so a branch switched in another terminal shows up too. Bands of other mods draw under usage-band's.
 
 ## plan-progress
 

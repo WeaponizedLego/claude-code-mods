@@ -1,11 +1,43 @@
 import { atom, read, update } from 'claude-code'
-import type { Color, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
+import type { Color, EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Snapshot, Tokens } from '../types'
-import { C, LIMIT_NAMES, TILE_H, bandSvg, compact, dollars, fill, level } from './look'
+import type { Git, Snapshot, Tokens } from '../types'
+import { others, parseWorktrees } from './git'
+import { C, LIMIT_NAMES, bandSvg, compact, dollars, fill, level } from './look'
 
 const snapshot = atom({ plugin: 'usage-band', key: 'snapshot' } as const, null)
 const tokens = atom({ plugin: 'usage-band', key: 'tokens' } as const, { input: 0, output: 0, cacheRead: 0 })
+const git = atom({ plugin: 'usage-band', key: 'git' } as const, null)
+
+// Branches also change outside the session (another terminal, an IDE): look again this often.
+const GIT_POLL_MS = 15_000
+// The terminal row cuts a long branch name to this many cells.
+const BRANCH_CELLS = 40
+
+/** Reads the branch and worktrees of the session's directory; null outside a repository. */
+async function readGit($: EngineInterface): Promise<void> {
+  try {
+    const opts = { cwd: await $.session.cwd(), timeoutMs: 5000 }
+    const top = await $.process.run(['git', 'rev-parse', '--show-toplevel'], opts)
+    if (top.exitCode !== 0) {
+      await update($, git, () => null)
+      return
+    }
+    const [head, list] = await Promise.all([
+      $.process.run(['git', 'branch', '--show-current'], opts),
+      $.process.run(['git', 'worktree', 'list', '--porcelain'], opts),
+    ])
+    let branch = head.stdout.trim()
+    if (!branch) {
+      const sha = await $.process.run(['git', 'rev-parse', '--short', 'HEAD'], opts)
+      branch = `detached @ ${sha.stdout.trim()}`
+    }
+    const fresh: Git = { branch, worktrees: parseWorktrees(list.stdout, top.stdout.trim()) }
+    await update($, git, prev => (JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh))
+  } catch {
+    // git missing or slow: keep what the band shows rather than flicker.
+  }
+}
 
 const ZERO: Tokens = { input: 0, output: 0, cacheRead: 0 }
 const BAR_CELLS = 10
@@ -32,7 +64,7 @@ type Segment = { runs: Run[]; priority: number }
 
 const width = (runs: Run[]) => runs.reduce((sum, r) => sum + r.text.length, 0)
 
-function segments(snap: Snapshot | null, used: Tokens): Segment[] {
+export function segments(snap: Snapshot | null, used: Tokens, g: Git | null): Segment[] {
   const out: Segment[] = []
 
   const percent = snap?.percent
@@ -83,6 +115,19 @@ function segments(snap: Snapshot | null, used: Tokens): Segment[] {
     })
   }
 
+  if (g) {
+    const name = g.branch.length > BRANCH_CELLS ? `${g.branch.slice(0, BRANCH_CELLS - 1)}…` : g.branch
+    const rest = others(g).count
+    out.push({
+      priority: 6,
+      runs: [
+        { text: '⎇ ', color: C.done },
+        { text: name, color: C.text, bold: true },
+        ...(rest > 0 ? [{ text: ` +${rest} worktree${rest === 1 ? '' : 's'}`, color: C.muted }] : []),
+      ],
+    })
+  }
+
   return out
 }
 
@@ -90,7 +135,7 @@ const SEPARATOR: Run = { text: ' / ', color: C.edge }
 const MARK: Run = { text: '✻ ', color: C.muted }
 
 // Drops the least important segments until the row fits, keeping the order.
-function fit(all: Segment[], columns: number): Run[] {
+export function fit(all: Segment[], columns: number): Run[] {
   let kept = all
   const total = (s: Segment[]) => width([MARK]) + s.reduce((sum, seg) => sum + width(seg.runs), 0) + width([SEPARATOR]) * Math.max(0, s.length - 1)
 
@@ -116,6 +161,22 @@ export const register: Register = on => {
     // session, what it has cost so far.
     const usage = await $.session.usage()
     await update($, snapshot, () => toSnapshot(usage))
+    await readGit($)
+    $.clock.every(GIT_POLL_MS, () => void readGit($))
+    return result
+  })
+
+  // A Bash call may have switched branch or added a worktree; a directory change
+  // (a worktree move) changes which checkout the band describes.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const result = await next(e)
+    void readGit($)
+    return result
+  })
+
+  on('classic.CwdChanged', async ($, e, next) => {
+    const result = await next(e)
+    await readGit($)
     return result
   })
 
@@ -134,6 +195,7 @@ export const register: Register = on => {
         cacheRead: t.cacheRead + usage.cache_read_input_tokens,
       }))
     }
+    if (!e.agentId) await readGit($)
     return next(e)
   })
 
@@ -148,24 +210,25 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
-    // Bands of mods beneath this one (branch-band, say) draw under it.
+    // Bands of other mods beneath this one (control-tower's, say) draw under it.
     const beneath = await next(e)
     const snap = await read($, snapshot)
     const used = await read($, tokens)
+    const g = await read($, git)
     const { Box } = $.ui.resolve(e)
 
     // Where the surface draws images and the band has the rows, a strip of stat tiles.
     let own
     if (e.surface !== 'terminal' && e.props.maxRows >= 3) {
       const { Svg } = $.ui.resolve(e)
-      const strip = bandSvg(snap, used, e.props.bodyColumns * CELL_PX)
+      const strip = bandSvg(snap, used, e.props.bodyColumns * CELL_PX, g, e.props.maxRows)
       own = (
         <Box flexDirection="row" key="usage-band">
-          <Svg source={strip.source} alt={strip.alt} width={strip.width} height={TILE_H} />
+          <Svg source={strip.source} alt={strip.alt} width={strip.width} height={strip.height} />
         </Box>
       )
     } else {
-      const runs = fit(segments(snap, used), e.props.bodyColumns)
+      const runs = fit(segments(snap, used, g), e.props.bodyColumns)
       const { Text } = $.ui.resolve(e)
       own = (
         <Box flexDirection="row" alignItems="center" key="usage-band">

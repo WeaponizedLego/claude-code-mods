@@ -1,7 +1,7 @@
 {
   "name": "usage-band",
-  "version": "0.4.1",
-  "description": "A band above the prompt showing context fill, tokens, cost and rate limits: stat tiles in the desktop app, a coloured row in the terminal",
+  "version": "0.5.0",
+  "description": "A band above the prompt showing context fill, tokens, cost, rate limits and the git branch: stat tiles in the desktop app, a coloured row in the terminal",
   "author": {
     "name": "WeaponizedLego"
   },
