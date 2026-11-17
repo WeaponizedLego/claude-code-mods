@@ -1,4 +1,5 @@
-import type { Snapshot, Tokens } from '../types'
+import type { Git, Snapshot, Tokens } from '../types'
+import { others } from './git'
 
 // Dark only: slate panels on a navy ground, hairline rules, light wide numerals.
 // Periwinkle while there is room, amber from 70%, red past 90%. An SVG is drawn
@@ -121,8 +122,54 @@ const GAP = 8
 const PAD = 14
 const R = 22
 
-/** The band as one strip of stat tiles, the least important dropped to fit. */
-export function bandSvg(snap: Snapshot | null, used: Tokens, width: number): { source: string; width: number; alt: string } {
+export const BRANCH_H = 24
+/** The rows a strip with the branch panel needs; with fewer the panel is left out. */
+export const BRANCH_ROWS = 5
+
+/** The branch panel under the tiles: a slim card as wide as the strip, cut to fit. */
+function branchPanel(g: Git, y: number, W: number): string {
+  const lx = PAD
+  const parts: string[] = []
+  parts.push(`<rect x="0.5" y="${y + 0.5}" width="${W - 1}" height="${BRANCH_H - 1}" fill="${C.card}" stroke="${C.stroke}"/>`)
+  parts.push(`<rect x="${lx}" y="${y + 7}" width="2" height="10" fill="${C.done}"/>`)
+  parts.push(label(lx + 8, y + 16, C.muted, 'Branch', 60))
+  const tx = lx + 8 + 6 * LABEL_CH + 10
+  const room = W - PAD - tx
+  const ch = 12 * 0.55
+  const name = fit(g.branch, room, ch)
+  const rest = others(g)
+  // The other worktrees: their names while there is room, else just how many, else nothing.
+  const left = room - name.length * ch
+  const short = `  ·  +${rest.count} worktree${rest.count === 1 ? '' : 's'}`
+  const long = `  ·  ${rest.count} other worktree${rest.count === 1 ? '' : 's'}: ${rest.names}`
+  const shown =
+    rest.count === 0 || name !== g.branch
+      ? ''
+      : left >= (short.length + 16) * ch
+        ? fit(long, left, ch)
+        : left >= short.length * ch
+          ? short
+          : ''
+  parts.push(
+    `<text x="${tx.toFixed(1)}" y="${y + 16}" font-size="12">` +
+      `<tspan fill="${C.text}">${esc(name)}</tspan>` +
+      (shown ? `<tspan fill="${C.muted}">${esc(shown)}</tspan>` : '') +
+      `</text>`,
+  )
+  return parts.join('')
+}
+
+/**
+ * The band as one strip of stat tiles, the least important dropped to fit, and
+ * under them, given the git checkout and the rows, the branch panel.
+ */
+export function bandSvg(
+  snap: Snapshot | null,
+  used: Tokens,
+  width: number,
+  g: Git | null = null,
+  maxRows = BRANCH_ROWS,
+): { source: string; width: number; height: number; alt: string } {
   let kept = tiles(snap, used)
   const fits = (n: number) => n * MIN_W + (n - 1) * GAP <= width
   while (kept.length > 1 && !fits(kept.length)) {
@@ -172,7 +219,15 @@ export function bandSvg(snap: Snapshot | null, used: Tokens, width: number): { s
     return g.join('')
   })
 
-  const source = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${TILE_H}" viewBox="0 0 ${W} ${TILE_H}" ${SANS}>${parts.join('')}</svg>`
-  const alt = kept.map(t => (t.value === '--' ? `${t.label} ${t.sub?.rest ?? 'not known yet'}` : `${t.label} ${t.value}${t.aside ? ` ${t.aside}` : ''}`)).join(', ')
-  return { source, width: W, alt }
+  const withBranch = g !== null && maxRows >= BRANCH_ROWS
+  const H = withBranch ? TILE_H + GAP + BRANCH_H : TILE_H
+  if (withBranch) parts.push(branchPanel(g, TILE_H + GAP, W))
+
+  const source = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" ${SANS}>${parts.join('')}</svg>`
+  let alt = kept.map(t => (t.value === '--' ? `${t.label} ${t.sub?.rest ?? 'not known yet'}` : `${t.label} ${t.value}${t.aside ? ` ${t.aside}` : ''}`)).join(', ')
+  if (withBranch) {
+    const rest = others(g)
+    alt += `, Branch ${g.branch}${rest.count > 0 ? `, ${rest.count} other worktrees: ${rest.names}` : ''}`
+  }
+  return { source, width: W, height: H, alt }
 }

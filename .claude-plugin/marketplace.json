@@ -8,12 +8,7 @@
     {
       "name": "usage-band",
       "source": "./usage-band",
-      "description": "A band above the prompt showing context fill, tokens, cost and rate limits: stat tiles in the desktop app, a coloured row in the terminal"
-    },
-    {
-      "name": "branch-band",
-      "source": "./branch-band",
-      "description": "A one-line band under usage-band showing the current git branch and the repository's other active worktrees"
+      "description": "A band above the prompt showing context fill, tokens, cost, rate limits and the git branch: stat tiles in the desktop app, a coloured row in the terminal"
     },
     {
       "name": "plan-progress",

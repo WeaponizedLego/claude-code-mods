@@ -1,7 +1,9 @@
 import type { RenderElement } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
-import { C } from './hooks/look'
+import { parseWorktrees } from './hooks/git'
+import { C, bandSvg } from './hooks/look'
+import { fit, segments } from './hooks/register'
 
 const band = (bodyColumns: number) => ({
   component: 'AbovePrompt' as const,
@@ -120,4 +122,64 @@ test('a band beneath this one draws under the usage row', async ($, on) => {
   expect(await desk.find({ type: 'Svg' })).toBeDefined()
   expect((await desk.find({ type: 'Text', text: 'feature/PLAT-1' }))?.text).toBe('feature/PLAT-1')
   await desk.unmount()
+})
+
+const PORCELAIN = `worktree /Users/me/repo
+HEAD 1111111
+branch refs/heads/develop
+
+worktree /Users/me/repo-wt/CD-4458
+HEAD 2222222
+branch refs/heads/feature/CD-4458_implement-mailgun-mail-api-replacement
+
+worktree /Users/me/repo-wt/scratch
+HEAD 3333333
+detached
+`
+const GIT = {
+  branch: 'feature/CD-4458_implement-mailgun-mail-api-replacement',
+  worktrees: parseWorktrees(PORCELAIN, '/Users/me/repo-wt/CD-4458'),
+}
+
+test('worktrees parse, the current one marked', async () => {
+  expect(GIT.worktrees.map(w => [w.branch, w.isCurrent])).toEqual([
+    ['develop', false],
+    ['feature/CD-4458_implement-mailgun-mail-api-replacement', true],
+    ['detached', false],
+  ])
+})
+
+test('the desktop strip gets a Branch panel under the tiles when the band has the rows', async () => {
+  const snap = { contextTokens: 357_000, window: 1_000_000, percent: 36, costUsd: 20.2, limits: [{ kind: 'five_hour', percentUsed: 50 }] }
+  const used = { input: 352_000, output: 93_000, cacheRead: 24_900_000 }
+
+  const strip = bandSvg(snap, used, 932, GIT, 6)
+  expect(strip.height).toBe(64 + 8 + 24)
+  expect(strip.source).toContain('>BRANCH<')
+  expect(strip.source).toContain('feature/CD-4458_implement-mailgun-mail-api-replacement')
+  expect(strip.source).toContain('2 other worktrees: repo, scratch')
+  expect(strip.alt).toContain('Branch feature/CD-4458')
+
+  // Too few rows, or no repository: the tiles alone.
+  expect(bandSvg(snap, used, 932, GIT, 3).height).toBe(64)
+  expect(bandSvg(snap, used, 932, null, 6).source).not.toContain('BRANCH')
+
+  // A narrow strip cuts the branch and drops the worktree list rather than overflow.
+  const narrow = bandSvg(snap, used, 300, GIT, 6)
+  expect(narrow.source).toContain('…')
+  expect(narrow.source).not.toContain('other worktree')
+  // A middling strip keeps the whole branch and says how many worktrees, not a cut list.
+  const middling = bandSvg(snap, used, 600, GIT, 6).source
+  expect(middling).toContain('feature/CD-4458_implement-mailgun-mail-api-replacement<')
+  expect(middling).toContain('+2 worktrees')
+})
+
+test('the terminal row ends with the branch, the first segment dropped when short of room', async () => {
+  const snap = { contextTokens: 20_000, window: 200_000, percent: 10, costUsd: 1.5, limits: [] }
+  const used = { input: 0, output: 0, cacheRead: 0 }
+  const text = (cols: number) => fit(segments(snap, used, GIT), cols).map(r => r.text).join('')
+
+  expect(text(140)).toContain('⎇ feature/CD-4458_implement-mailgun-mail-… +2 worktrees')
+  expect(text(40)).not.toContain('⎇')
+  expect(fit(segments(snap, used, null), 140).map(r => r.text).join('')).not.toContain('⎇')
 })
